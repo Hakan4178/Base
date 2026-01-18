@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#0D0D0D">
+
+    <!-- STATUS BAR -->
+    <TextView
+        android:id="@+id/txtStatus"
+        android:layout_width="0dp"
+        android:layout_height="48dp"
+        android:background="#33000000"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="16dp"
+        android:text="🖱️ Mouse | Bağlanıyor..."
+        android:textColor="#FFFFFF"
+        android:textSize="14sp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <!-- GUIDELINE -->
+    <androidx.constraintlayout.widget.Guideline
+        android:id="@+id/guidelineSplit"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        app:layout_constraintGuide_percent="0.70" />
+
+    <!-- TOUCHPAD -->
+    <FrameLayout
+        android:id="@+id/touchpadArea"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="#1A1A2E"
+        app:layout_constraintBottom_toTopOf="@id/controlBar"
+        app:layout_constraintEnd_toStartOf="@id/guidelineSplit"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/txtStatus">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:text="TOUCHPAD\n👆 Parmağınızı kaydırın"
+            android:textAlignment="center"
+            android:textColor="#33FFFFFF"
+            android:textSize="14sp" />
+
+    </FrameLayout>
+
+    <!-- SCROLL INDICATOR -->
+    <View
+        android:id="@+id/scrollIndicator"
+        android:layout_width="20dp"
+        android:layout_height="0dp"
+        android:background="#22FFFFFF"
+        app:layout_constraintBottom_toTopOf="@id/controlBar"
+        app:layout_constraintEnd_toEndOf="@id/touchpadArea"
+        app:layout_constraintTop_toBottomOf="@id/txtStatus" />
+
+    <!-- MOUSE BUTTONS -->
+    <LinearLayout
+        android:id="@+id/mouseButtonsArea"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="#16213E"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="8dp"
+        app:layout_constraintBottom_toTopOf="@id/controlBar"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toEndOf="@id/guidelineSplit"
+        app:layout_constraintTop_toBottomOf="@id/txtStatus">
+
+        <Button
+            android:id="@+id/btnMouseLeft"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_margin="4dp"
+            android:layout_weight="1"
+            android:background="@drawable/mouse_button_left"
+            android:text="SOL\nTIK"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btnMouseRight"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_margin="4dp"
+            android:layout_weight="1"
+            android:background="@drawable/mouse_button_right"
+            android:text="SAĞ\nTIK"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btnMouseMiddle"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_margin="4dp"
+            android:layout_weight="0.5"
+            android:background="@drawable/mouse_button_middle"
+            android:text="ORTA"
+            android:textColor="#AAAAAA"
+            android:textSize="12sp" />
+
+    </LinearLayout>
+
+    <!-- CONTROL BAR -->
+    <LinearLayout
+        android:id="@+id/controlBar"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:background="#CC000000"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:padding="8dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent">
+
+        <Button
+            android:id="@+id/btnDiscover"
+            style="@style/Widget.AppCompat.Button.Borderless"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:text="🔍 Discover"
+            android:textColor="#FFFFFF"
+            android:textSize="12sp" />
+
+        <Switch
+            android:id="@+id/switchHaptic"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:layout_marginStart="16dp"
+            android:checked="true"
+            android:text="Titreşim"
+            android:textColor="#AAAAAA"
+            android:textSize="11sp" />
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <TextView
+            android:id="@+id/txtPing"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Ping: --"
+            android:textColor="#888888"
+            android:textSize="11sp" />
+
+        <Button
+            android:id="@+id/btnChangeMode"
+            style="@style/Widget.AppCompat.Button.Borderless.Colored"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:layout_marginStart="8dp"
+            android:text="🎮 Gamepad"
+            android:textSize="12sp" />
+
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000">
+
+    <!-- MENU BUTONU: Boyutlar standartlaştırıldı, srcCompat kullanıldı -->
+    <ImageButton
+        android:id="@+id/btnMenu"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_marginStart="8dp"
+        android:layout_marginTop="8dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="Menü"
+        android:padding="8dp"
+        app:srcCompat="@android:drawable/ic_menu_more"
+        app:tint="@color/purple_700"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <!-- DURUM METNİ: Hizalama iyileştirildi -->
+    <TextView
+        android:id="@+id/txtStatus"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:background="#33000000"
+        android:gravity="center_vertical"
+        android:padding="12dp"
+        android:text="Hazır"
+        android:textColor="#FFFFFF"
+        android:textSize="14sp"
+        app:layout_constraintBottom_toBottomOf="@+id/btnMenu"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toEndOf="@id/btnMenu"
+        app:layout_constraintTop_toTopOf="@+id/btnMenu"
+        tools:ignore="HardcodedText" />
+
+    <!-- ORTA ALAN: LinearLayout kaldırıldı. ConstraintLayout zinciri kullanıldı.
+         layout_constraintHorizontal_weight ile oranlama yapıldı (1.6 ve 0.9) -->
+
+    <FrameLayout
+        android:id="@+id/touchpadArea"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="#22FFFFFF"
+        app:layout_constraintBottom_toTopOf="@id/controlBar"
+        app:layout_constraintEnd_toStartOf="@+id/mouseButtonsArea"
+        app:layout_constraintHorizontal_weight="1.6"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/btnMenu" />
+
+    <FrameLayout
+        android:id="@+id/mouseButtonsArea"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="#11FFFFFF"
+        app:layout_constraintBottom_toTopOf="@id/controlBar"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_weight="0.9"
+        app:layout_constraintStart_toEndOf="@+id/touchpadArea"
+        app:layout_constraintTop_toBottomOf="@id/btnMenu" />
+
+    <!-- KONTROL ÇUBUĞU: Butonlar arası boşluklar ve padding düzeltildi -->
+    <LinearLayout
+        android:id="@+id/controlBar"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:background="#AA000000"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:padding="8dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent">
+
+        <Button
+            android:id="@+id/btnEditMode"
+            style="@style/Widget.AppCompat.Button.Borderless"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minWidth="0dp"
+            android:paddingHorizontal="8dp"
+            android:text="Edit"
+            android:textColor="#FFFFFF" />
+
+        <Button
+            android:id="@+id/btnAdd"
+            style="@style/Widget.AppCompat.Button.Borderless"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minWidth="0dp"
+            android:paddingHorizontal="8dp"
+            android:text="Add"
+            android:textColor="#FFFFFF" />
+
+        <Button
+            android:id="@+id/btnDiscover"
+            style="@style/Widget.AppCompat.Button.Borderless"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minWidth="0dp"
+            android:paddingHorizontal="8dp"
+            android:text="Discover"
+            android:textColor="#FFFFFF" />
+
+        <!-- Spinner height wrap_content yapıldı, sabit 50dp yerine -->
+        <Spinner
+            android:id="@+id/spinnerPresets"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:layout_weight="1"
+            android:minHeight="48dp" />
+
+        <Button
+            android:id="@+id/btnSavePreset"
+            style="@style/Widget.AppCompat.Button.Borderless"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minWidth="0dp"
+            android:paddingHorizontal="8dp"
+            android:text="Save"
+            android:textColor="#FFFFFF" />
+
+        <Button
+            android:id="@+id/btnChangeMode"
+            style="@style/Widget.AppCompat.Button.Borderless.Colored"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minWidth="0dp"
+            android:paddingHorizontal="8dp"
+            android:text="Mod" />
+
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>
