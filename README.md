@@ -13,5 +13,7 @@ chmod +x install.sh
 # Kullanım
 
 ./run.sh           # Normal mod
+
 ./run.sh -d        # Debug mod (tüm paketleri loglar)
+
 ./run.sh -p 5000   # Farklı port
