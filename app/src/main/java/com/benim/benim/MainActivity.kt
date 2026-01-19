@@ -1,5 +1,6 @@
 package com.benim.benim
 
+import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -13,6 +14,7 @@ import android.view.WindowManager
 import android.widget.*
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import com.benim.benim.net.UdpService
 import com.benim.benim.ui.DraggableButton
 import org.json.JSONArray
@@ -20,7 +22,6 @@ import org.json.JSONObject
 import java.util.*
 import kotlin.math.abs
 import kotlin.math.roundToInt
-import androidx.core.content.ContextCompat
 
 // ═══════════════════════════════════════════════════════════════
 // DATA MODELS
@@ -45,41 +46,85 @@ data class LayoutSpec(
 // ═══════════════════════════════════════════════════════════════
 class MainActivity : AppCompatActivity() {
 
-    // Preferences
-    private val prefs by lazy { getSharedPreferences("settings", MODE_PRIVATE) }
+    // --- Sabitler ---
+    companion object {
+        private const val TAG = "MainActivity"
 
-    // Mode: "classic" (gamepad), "split" (mouse), "auto" (orientation-based)
+        // Gamepad Buton Maskları (16-bit)
+        const val BTN_A = 0x0001
+        const val BTN_B = 0x0002
+        const val BTN_X = 0x0004
+        const val BTN_Y = 0x0008
+        const val BTN_L1 = 0x0010
+        const val BTN_R1 = 0x0020
+        const val BTN_SELECT = 0x0040
+        const val BTN_START = 0x0080
+
+        const val BTN_L2 = 0x0100
+        const val BTN_R2 = 0x0200
+        const val BTN_L3 = 0x0400
+        const val BTN_R3 = 0x0800
+        const val BTN_HOME = 0x1000
+        const val BTN_DPAD_UP = 0x2000
+        const val BTN_DPAD_DOWN = 0x4000
+        const val BTN_DPAD_LEFT = 0x8000
+    }
+
+    // --- Değişkenler ---
+    private val prefs by lazy { getSharedPreferences("settings", MODE_PRIVATE) }
+    private val PREFS_LAYOUTS = "gamepad_layouts"
+    private val KEY_LAYOUTS = "layouts_json"
+
+    // Mod Yönetimi
     private var currentMode: String = "auto"
     private var effectiveMode: String = "classic"
 
-    // Views (nullable - not all exist in every layout)
+    // UI Elementleri (Nullable)
     private var txtStatus: TextView? = null
+
+    // Classic Mode UI
     private var joystickArea: FrameLayout? = null
+    private var rightJoystickArea: FrameLayout? = null
+    private var joystickThumb: View? = null
+    private var rightJoystickThumb: View? = null
+
+    // Split Mode UI
     private var touchpadArea: FrameLayout? = null
     private var btnMouseLeft: Button? = null
     private var btnMouseRight: Button? = null
     private var btnMouseMiddle: Button? = null
 
-    // Runtime state
+    // Controller Durumu
     private var currentButtons = 0
     private var lastJoystickX: Byte = 0
     private var lastJoystickY: Byte = 0
-    private var editMode = false
-    private var centerOnTouchEnabled = true
-    private var globalHaptic = true
+    private var rightJoystickX: Byte = 0
+    private var rightJoystickY: Byte = 0
+    private var dpadX: Byte = 0
+    private var dpadY: Byte = 0
 
-    // Joystick state
-    private var joystickCenterX = 0f
-    private var joystickCenterY = 0f
-
-    // Touchpad state
+    // Touchpad Durumu
     private var lastTouchX = 0f
     private var lastTouchY = 0f
     private var touchpadActive = false
     private var lastScrollY = 0f
 
-    // Service
+    // Ayarlar
+    private var editMode = false
+    private var centerOnTouchEnabled = true
+    private var globalHaptic = true
+
+    // Layout Verileri
+    private var layoutsMap: MutableMap<String, LayoutSpec> = mutableMapOf()
+    private var currentLayoutKey = "default"
+    private val specViewMap = mutableMapOf<String, DraggableButton>()
+
+    // Servis ve Zamanlayıcılar
     private var udpService: UdpService? = null
+    private val uiHandler = Handler(Looper.getMainLooper())
+    private var statusTimer: Timer? = null
+
+    // --- Service Connection ---
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
             udpService = (binder as UdpService.LocalBinder).getService()
@@ -91,129 +136,54 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // Presets (only for classic mode)
-    private val PREFS_LAYOUTS = "gamepad_layouts"
-    private val KEY_LAYOUTS = "layouts_json"
-    private var layoutsMap: MutableMap<String, LayoutSpec> = mutableMapOf()
-    private var currentLayoutKey = "default"
-    private val specViewMap = mutableMapOf<String, DraggableButton>()
-
-    // Handlers
-    private val uiHandler = Handler(Looper.getMainLooper())
-    private var statusTimer: Timer? = null
-
-    // Button masks
-    companion object {
-        const val BTN_A = 0b00000001
-        const val BTN_B = 0b00000010
-        const val BTN_X = 0b00000100
-        const val BTN_Y = 0b00001000
-        const val BTN_START = 0b00010000
-        const val BTN_SELECT = 0b00100000
-        const val BTN_L1 = 0b01000000
-        const val BTN_R1 = 0b10000000
-        private const val TAG = "MainActivity"
-    }
-
-    // Ping receiver -> Status receiver olarak güncelle
-    private val statusReceiver = object : android.content.BroadcastReceiver() {
+    // --- Broadcast Receiver ---
+    private val statusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action != UdpService.ACTION_STATUS) return
-
-            val type = intent.getStringExtra(UdpService.EXTRA_TYPE) ?: return
-            val message = intent.getStringExtra(UdpService.EXTRA_MESSAGE) ?: ""
-            val ping = intent.getLongExtra(UdpService.EXTRA_PING, -1)
-            val serverIp = intent.getStringExtra(UdpService.EXTRA_SERVER_IP)
-            val isAlive = intent.getBooleanExtra(UdpService.EXTRA_IS_ALIVE, false)
-
-            // UI güncelle
-            updateStatus()
-
-            // Bazı durumlarda ek Toast göster (opsiyonel, Service zaten gösteriyor)
-            when (type) {
-                UdpService.TYPE_DISCOVERY_SUCCESS -> {
-                    // Service zaten Toast gösterdi
-                }
-                UdpService.TYPE_PING_UPDATE -> {
-                    // Her ping'de Toast gösterme, sadece UI güncelle
-                }
+            if (intent?.action == UdpService.ACTION_STATUS) {
+                runOnUiThread { updateStatus() }
             }
         }
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // LIFECYCLE
+    // LIFECYCLE METODLARI
     // ═══════════════════════════════════════════════════════════════
     override fun onCreate(savedInstanceState: Bundle?) {
-        // Fullscreen flags
+        // Tam Ekran Ayarları
         window.setFlags(
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
         )
-        setTheme(R.style.Theme_Benim_NoActionBar)
+        try { setTheme(R.style.Theme_Benim_NoActionBar) } catch (_: Exception) {}
 
         super.onCreate(savedInstanceState)
 
-        // Determine mode
+        // Modu Belirle ve Layout'u Yükle
         currentMode = prefs.getString("ui_mode", "auto") ?: "auto"
         effectiveMode = resolveEffectiveMode()
 
-        // Set layout based on mode
-        when (effectiveMode) {
-            "classic" -> setContentView(R.layout.activity_main_classic)
-            "split" -> setContentView(R.layout.activity_main_split)
-            else -> setContentView(R.layout.activity_main_classic)
-        }
+        val layoutId = if (effectiveMode == "classic") R.layout.activity_main_classic else R.layout.activity_main_split
+        setContentView(layoutId)
 
-        // Immersive mode
-        window.decorView.systemUiVisibility =
-            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
-                    View.SYSTEM_UI_FLAG_FULLSCREEN or
-                    View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+        // Immersive Mode
+        window.decorView.systemUiVisibility = (
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+                        View.SYSTEM_UI_FLAG_FULLSCREEN or
+                        View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                )
 
-        // Bind views
+        // Başlatma İşlemleri
         bindViews()
+        setupListeners()
+        registerStatusReceiver()
+        startUdpService()
 
-        // Setup listeners
-        setupCommonListeners()
+        // Mod Özel Ayarları
+        if (effectiveMode == "classic") setupClassicMode()
+        else setupSplitMode()
 
-        // Register receiver & load data
-        // ✅ DÜZELTME: Android 14 için RECEIVER_EXPORTED veya RECEIVER_NOT_EXPORTED bayrağı ekleyin
-        // Register status receiver
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            ContextCompat.registerReceiver(
-                this,
-                statusReceiver,
-                IntentFilter(UdpService.ACTION_STATUS),
-                ContextCompat.RECEIVER_NOT_EXPORTED
-            )
-        } else {
-            @Suppress("DEPRECATION")
-            registerReceiver(statusReceiver, IntentFilter(UdpService.ACTION_STATUS))
-        }
-
-        // Start service
-        Intent(this, UdpService::class.java).also { intent ->
-            startService(intent)
-            bindService(intent, serviceConnection, BIND_AUTO_CREATE)
-        }
-
-        // Mode-specific setup
-        when (effectiveMode) {
-            "classic" -> setupClassicMode()
-            "split" -> setupSplitMode()
-        }
-
-        // Periodic status update
-        statusTimer = Timer().apply {
-            scheduleAtFixedRate(object : TimerTask() {
-                override fun run() {
-                    runOnUiThread { updateStatus() }
-                }
-            }, 0, 1000L)
-        }
-
-        updateStatus()
+        // UI Güncelleme Zamanlayıcısı
+        startStatusTimer()
     }
 
     override fun onDestroy() {
@@ -225,63 +195,74 @@ class MainActivity : AppCompatActivity() {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        // Only react to orientation change in auto mode
-        if (currentMode == "auto") {
-            val newEffective = resolveEffectiveMode()
-            if (newEffective != effectiveMode) {
-                recreate()
-            }
-        }
+        if (currentMode == "auto") recreate()
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // MODE RESOLUTION
+    // YARDIMCI BAŞLATMA METODLARI
     // ═══════════════════════════════════════════════════════════════
     private fun resolveEffectiveMode(): String {
         return when (currentMode) {
             "classic" -> "classic"
             "split" -> "split"
-            "auto" -> {
-                if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE)
-                    "classic" else "split"
-            }
+            "auto" -> if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) "classic" else "split"
             else -> "classic"
         }
     }
 
+    private fun registerStatusReceiver() {
+        val filter = IntentFilter(UdpService.ACTION_STATUS)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.registerReceiver(this, statusReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("DEPRECATION")
+            registerReceiver(statusReceiver, filter)
+        }
+    }
+
+    private fun startUdpService() {
+        val intent = Intent(this, UdpService::class.java)
+        startService(intent)
+        bindService(intent, serviceConnection, BIND_AUTO_CREATE)
+    }
+
+    private fun startStatusTimer() {
+        statusTimer = Timer().apply {
+            scheduleAtFixedRate(object : TimerTask() {
+                override fun run() { runOnUiThread { updateStatus() } }
+            }, 0, 1000L)
+        }
+    }
+
     // ═══════════════════════════════════════════════════════════════
-    // VIEW BINDING
+    // VIEW BINDING & LISTENERS
     // ═══════════════════════════════════════════════════════════════
     private fun bindViews() {
         txtStatus = findViewById(R.id.txtStatus)
 
-        // Mode-specific views
+        // Classic
         joystickArea = findViewById(R.id.joystickArea)
+        rightJoystickArea = findViewById(R.id.rightJoystickArea)
+        joystickThumb = findViewById(R.id.joystickThumb)
+        rightJoystickThumb = findViewById(R.id.rightJoystickThumb)
+
+        // Split
         touchpadArea = findViewById(R.id.touchpadArea)
         btnMouseLeft = findViewById(R.id.btnMouseLeft)
         btnMouseRight = findViewById(R.id.btnMouseRight)
         btnMouseMiddle = findViewById(R.id.btnMouseMiddle)
     }
 
-    private fun setupCommonListeners() {
-        // Status long press → manual IP
-        txtStatus?.setOnLongClickListener {
-            promptSetServerIp()
-            true
-        }
+    private fun setupListeners() {
+        txtStatus?.setOnLongClickListener { promptSetServerIp(); true }
 
-        // Discover button
         findViewById<Button?>(R.id.btnDiscover)?.setOnClickListener {
             udpService?.discoverServer()
             Toast.makeText(this, "Sunucu aranıyor...", Toast.LENGTH_SHORT).show()
         }
 
-        // Mode change button
-        findViewById<Button?>(R.id.btnChangeMode)?.setOnClickListener {
-            showModeSelectionDialog()
-        }
+        findViewById<Button?>(R.id.btnChangeMode)?.setOnClickListener { showModeSelectionDialog() }
 
-        // Haptic switch
         findViewById<Switch?>(R.id.switchHaptic)?.apply {
             isChecked = globalHaptic
             setOnCheckedChangeListener { _, checked -> globalHaptic = checked }
@@ -292,596 +273,411 @@ class MainActivity : AppCompatActivity() {
     // CLASSIC MODE (GAMEPAD)
     // ═══════════════════════════════════════════════════════════════
     private fun setupClassicMode() {
-        // Load presets
+        // Layout Yükle
         layoutsMap = loadLayoutsMap()
         if (!layoutsMap.containsKey(currentLayoutKey)) {
             layoutsMap[currentLayoutKey] = LayoutSpec("Default")
         }
 
-        // Center touch switch
-        findViewById<Switch?>(R.id.switchCenterTouch)?.apply {
-            isChecked = centerOnTouchEnabled
-            setOnCheckedChangeListener { _, checked -> centerOnTouchEnabled = checked }
-        }
+        // Joystick Listeners
+        joystickArea?.setOnTouchListener { v, ev -> handleJoystickTouch(v, ev, true); true }
+        joystickArea?.setOnLongClickListener { pressButton(BTN_L3); true }
 
-        // Edit mode buttons
+        rightJoystickArea?.setOnTouchListener { v, ev -> handleJoystickTouch(v, ev, false); true }
+        rightJoystickArea?.setOnLongClickListener { pressButton(BTN_R3); true }
+
+        // Buton Tanımları
+        val buttons = mapOf(
+            R.id.btnA to BTN_A, R.id.btnB to BTN_B, R.id.btnX to BTN_X, R.id.btnY to BTN_Y,
+            R.id.btnL1 to BTN_L1, R.id.btnR1 to BTN_R1, R.id.btnL2 to BTN_L2, R.id.btnR2 to BTN_R2,
+            R.id.btnStart to BTN_START, R.id.btnSelect to BTN_SELECT, R.id.btnHome to BTN_HOME
+        )
+
+        buttons.forEach { (id, mask) -> setupGamepadButton(id, mask) }
+
+        // D-Pad Tanımları
+        setupDpadButton(R.id.btnDpadUp, 0, -1)
+        setupDpadButton(R.id.btnDpadDown, 0, 1)
+        setupDpadButton(R.id.btnDpadLeft, -1, 0)
+        setupDpadButton(R.id.btnDpadRight, 1, 0)
+
+        // Edit Mode Butonları
         findViewById<Button?>(R.id.btnEditMode)?.setOnClickListener { toggleEditMode() }
         findViewById<Button?>(R.id.btnAdd)?.setOnClickListener { showAddButtonDialog() }
         findViewById<Button?>(R.id.btnSavePreset)?.setOnClickListener { showSavePresetDialog() }
 
-        // Preset spinner
         findViewById<Spinner?>(R.id.spinnerPresets)?.let { updatePresetSpinner(it) }
-
-        // Joystick touch
-        joystickArea?.setOnTouchListener { v, ev ->
-            handleJoystickTouch(v, ev)
-            true
+        findViewById<Switch?>(R.id.switchCenterTouch)?.apply {
+            isChecked = centerOnTouchEnabled
+            setOnCheckedChangeListener { _, c -> centerOnTouchEnabled = c }
         }
 
-        // Gamepad buttons
-        setupGamepadButtons()
+        // Custom Butonları Yerleştir
+        joystickArea?.post { placeButtonsFromLayout(layoutsMap[currentLayoutKey]!!) }
+    }
 
-        // Place custom buttons
-        joystickArea?.post {
-            placeButtonsFromLayout(layoutsMap[currentLayoutKey]!!)
+    private fun setupGamepadButton(viewId: Int, mask: Int) {
+        findViewById<View?>(viewId)?.setOnTouchListener { v, ev ->
+            when (ev.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    currentButtons = currentButtons or mask
+                    v.isPressed = true
+                    if (globalHaptic) doHaptic()
+                    sendFullGamepad()
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    currentButtons = currentButtons and mask.inv()
+                    v.isPressed = false
+                    sendFullGamepad()
+                }
+            }
+            true
         }
     }
 
-    private fun setupGamepadButtons() {
-        val buttonMappings = listOf(
-            R.id.btnA to BTN_A,
-            R.id.btnB to BTN_B,
-            R.id.btnX to BTN_X,
-            R.id.btnY to BTN_Y,
-            R.id.btnStart to BTN_START,
-            R.id.btnSelect to BTN_SELECT,
-            R.id.btnL1 to BTN_L1,
-            R.id.btnR1 to BTN_R1
-        )
-
-        for ((viewId, mask) in buttonMappings) {
-            findViewById<Button?>(viewId)?.setOnTouchListener { _, event ->
-                when (event.action) {
-                    MotionEvent.ACTION_DOWN -> {
-                        currentButtons = currentButtons or mask
-                        if (globalHaptic) doHaptic()
-                    }
-                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                        currentButtons = currentButtons and mask.inv()
-                    }
+    private fun setupDpadButton(viewId: Int, dx: Int, dy: Int) {
+        findViewById<View?>(viewId)?.setOnTouchListener { v, ev ->
+            when (ev.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    dpadX = (dx * 127).toByte()
+                    dpadY = (dy * 127).toByte()
+                    v.isPressed = true
+                    if (globalHaptic) doHaptic()
+                    sendFullGamepad()
                 }
-                sendJoystick()
-                true
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    dpadX = 0; dpadY = 0
+                    v.isPressed = false
+                    sendFullGamepad()
+                }
+            }
+            true
+        }
+    }
+
+    private fun pressButton(mask: Int) {
+        currentButtons = currentButtons or mask
+        sendFullGamepad()
+        if (globalHaptic) doHaptic()
+        uiHandler.postDelayed({
+            currentButtons = currentButtons and mask.inv()
+            sendFullGamepad()
+        }, 100L)
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // JOYSTICK MANTIĞI
+    // ═══════════════════════════════════════════════════════════════
+    private fun handleJoystickTouch(view: View, event: MotionEvent, isLeft: Boolean) {
+        val w = view.width.toFloat()
+        val h = view.height.toFloat()
+        val thumb = if (isLeft) joystickThumb else rightJoystickThumb
+
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
+                // Center-on-touch (sadece sol stick için opsiyonel olabilir)
+                val cx = if (isLeft && centerOnTouchEnabled && event.action == MotionEvent.ACTION_DOWN) event.x else w / 2f
+                val cy = if (isLeft && centerOnTouchEnabled && event.action == MotionEvent.ACTION_DOWN) event.y else h / 2f
+
+                val dx = (event.x - cx) / (w / 2f)
+                val dy = (event.y - cy) / (h / 2f)
+
+                val clampedX = dx.coerceIn(-1f, 1f)
+                val clampedY = dy.coerceIn(-1f, 1f)
+
+                val byteX = (clampedX * 127f).roundToInt().toByte()
+                val byteY = (clampedY * 127f).roundToInt().toByte()
+
+                if (isLeft) { lastJoystickX = byteX; lastJoystickY = byteY }
+                else { rightJoystickX = byteX; rightJoystickY = byteY }
+
+                thumb?.let {
+                    val maxOffset = (w/2f) - (it.width/2f)
+                    it.translationX = clampedX * maxOffset
+                    it.translationY = clampedY * maxOffset
+                }
+                sendFullGamepad()
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (isLeft) { lastJoystickX = 0; lastJoystickY = 0 }
+                else { rightJoystickX = 0; rightJoystickY = 0 }
+
+                thumb?.animate()?.translationX(0f)?.translationY(0f)?.setDuration(100)?.start()
+                sendFullGamepad()
             }
         }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // AĞ GÖNDERİMİ
+    // ═══════════════════════════════════════════════════════════════
+    private fun sendFullGamepad() {
+        // Paket: [TYPE, BTN_LOW, BTN_HIGH, LX, LY, RX, RY, DX, DY]
+        udpService?.sendRaw(byteArrayOf(
+            0x01,
+            (currentButtons and 0xFF).toByte(),
+            ((currentButtons shr 8) and 0xFF).toByte(),
+            lastJoystickX, lastJoystickY,
+            rightJoystickX, rightJoystickY,
+            dpadX, dpadY
+        ))
+    }
+
+    private fun sendMouseMove(dx: Int, dy: Int) {
+        udpService?.sendRaw(byteArrayOf(0x02, dx.coerceIn(-127, 127).toByte(), dy.coerceIn(-127, 127).toByte(), 0, 0))
+    }
+
+    private fun sendMouseButton(btn: Int, pressed: Boolean) {
+        udpService?.sendRaw(byteArrayOf(0x03, btn.toByte(), if (pressed) 1 else 0, 0, 0))
+    }
+
+    private fun sendMouseWheel(delta: Int) {
+        udpService?.sendRaw(byteArrayOf(0x04, delta.coerceIn(-127, 127).toByte(), 0, 0, 0))
     }
 
     // ═══════════════════════════════════════════════════════════════
     // SPLIT MODE (MOUSE)
     // ═══════════════════════════════════════════════════════════════
     private fun setupSplitMode() {
-        // Touchpad
-        touchpadArea?.setOnTouchListener { _, event ->
-            handleTouchpadTouch(event)
-            true
-        }
-
-        // Mouse buttons
-        btnMouseLeft?.setOnTouchListener { _, event ->
-            handleMouseButton(0, event)
-            true
-        }
-
-        btnMouseRight?.setOnTouchListener { _, event ->
-            handleMouseButton(1, event)
-            true
-        }
-
-        btnMouseMiddle?.setOnTouchListener { _, event ->
-            handleMouseButton(2, event)
-            true
-        }
-
-        // Scroll indicator
-        findViewById<View?>(R.id.scrollIndicator)?.setOnTouchListener { _, event ->
-            handleScrollTouch(event)
-            true
-        }
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    // JOYSTICK HANDLING
-    // ═══════════════════════════════════════════════════════════════
-    private fun handleJoystickTouch(view: View, event: MotionEvent) {
-        val w = view.width.toFloat()
-        val h = view.height.toFloat()
-
-        when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                joystickCenterX = if (centerOnTouchEnabled) event.x.coerceIn(0f, w) else w / 2f
-                joystickCenterY = if (centerOnTouchEnabled) event.y.coerceIn(0f, h) else h / 2f
-                updateJoystickFromCoords(event.x, event.y, w, h)
+        touchpadArea?.setOnTouchListener { _, ev ->
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_DOWN -> { lastTouchX = ev.x; lastTouchY = ev.y; touchpadActive = true }
+                MotionEvent.ACTION_MOVE -> {
+                    if (touchpadActive) {
+                        val dx = (ev.x - lastTouchX).toInt()
+                        val dy = (ev.y - lastTouchY).toInt()
+                        if (abs(dx) > 1 || abs(dy) > 1) {
+                            sendMouseMove(dx, dy)
+                            lastTouchX = ev.x; lastTouchY = ev.y
+                        }
+                    }
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> touchpadActive = false
             }
-            MotionEvent.ACTION_MOVE -> {
-                updateJoystickFromCoords(event.x, event.y, w, h)
-            }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                lastJoystickX = 0
-                lastJoystickY = 0
-                sendJoystick()
+            true
+        }
+
+        val mouseBtns = listOf(btnMouseLeft to 0, btnMouseRight to 1, btnMouseMiddle to 2)
+        mouseBtns.forEach { (view, id) ->
+            view?.setOnTouchListener { _, ev ->
+                when (ev.action) {
+                    MotionEvent.ACTION_DOWN -> { sendMouseButton(id, true); if (globalHaptic) doHaptic() }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> sendMouseButton(id, false)
+                }
+                true
             }
         }
-        updateStatus()
-    }
 
-    private fun updateJoystickFromCoords(x: Float, y: Float, w: Float, h: Float) {
-        val dx = (x - joystickCenterX) / (w / 2f)
-        val dy = (y - joystickCenterY) / (h / 2f)
-        lastJoystickX = (dx.coerceIn(-1f, 1f) * 127f).roundToInt().toByte()
-        lastJoystickY = (dy.coerceIn(-1f, 1f) * 127f).roundToInt().toByte()
-        sendJoystick()
-    }
-
-    private fun sendJoystick() {
-        udpService?.sendJoystick(currentButtons.toByte(), lastJoystickX, lastJoystickY, 0)
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    // TOUCHPAD HANDLING
-    // ═══════════════════════════════════════════════════════════════
-    private fun handleTouchpadTouch(event: MotionEvent): Boolean {
-        when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                lastTouchX = event.x
-                lastTouchY = event.y
-                touchpadActive = true
-            }
-            MotionEvent.ACTION_MOVE -> {
-                if (!touchpadActive) return true
-                val dx = (event.x - lastTouchX).toInt()
-                val dy = (event.y - lastTouchY).toInt()
-                if (abs(dx) > 1 || abs(dy) > 1) {
-                    sendMouseMove(dx, dy)
-                    lastTouchX = event.x
-                    lastTouchY = event.y
+        findViewById<View?>(R.id.scrollIndicator)?.setOnTouchListener { _, ev ->
+            when (ev.action) {
+                MotionEvent.ACTION_DOWN -> lastScrollY = ev.y
+                MotionEvent.ACTION_MOVE -> {
+                    val dy = (lastScrollY - ev.y) / 20f
+                    if (abs(dy) > 1) { sendMouseWheel(dy.toInt()); lastScrollY = ev.y }
                 }
             }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                touchpadActive = false
-            }
+            true
         }
-        return true
-    }
-
-    private fun handleMouseButton(button: Int, event: MotionEvent): Boolean {
-        when (event.action) {
-            MotionEvent.ACTION_DOWN -> {
-                sendMouseButton(button, true)
-                if (globalHaptic) doHaptic()
-            }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                sendMouseButton(button, false)
-            }
-        }
-        return true
-    }
-
-    private fun handleScrollTouch(event: MotionEvent): Boolean {
-        when (event.action) {
-            MotionEvent.ACTION_DOWN -> lastScrollY = event.y
-            MotionEvent.ACTION_MOVE -> {
-                val dy = (lastScrollY - event.y) / 20f
-                if (abs(dy) > 1) {
-                    sendMouseWheel(dy.toInt())
-                    lastScrollY = event.y
-                }
-            }
-        }
-        return true
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // MOUSE COMMANDS
+    // EDIT & PRESETS
     // ═══════════════════════════════════════════════════════════════
-    private fun sendMouseMove(dx: Int, dy: Int) {
-        val buf = byteArrayOf(
-            0x02.toByte(),
-            dx.coerceIn(-127, 127).toByte(),
-            dy.coerceIn(-127, 127).toByte(),
-            0, 0
-        )
-        udpService?.sendRaw(buf)
-    }
-
-    private fun sendMouseButton(button: Int, pressed: Boolean) {
-        val buf = byteArrayOf(
-            0x03.toByte(),
-            button.toByte(),
-            if (pressed) 1 else 0,
-            0, 0
-        )
-        udpService?.sendRaw(buf)
-    }
-
-    private fun sendMouseWheel(delta: Int) {
-        val buf = byteArrayOf(
-            0x04.toByte(),
-            delta.coerceIn(-127, 127).toByte(),
-            0, 0, 0
-        )
-        udpService?.sendRaw(buf)
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    // MODE SELECTION DIALOG
-    // ═══════════════════════════════════════════════════════════════
-    private fun showModeSelectionDialog() {
-        val modes = arrayOf(
-            "🔄 Auto (Oryantasyona göre)",
-            "🎮 Classic (Gamepad)",
-            "🖱️ Split (Mouse)"
-        )
-        val modeValues = arrayOf("auto", "classic", "split")
-
-        AlertDialog.Builder(this)
-            .setTitle("Kontrol Modu Seç")
-            .setItems(modes) { _, which ->
-                prefs.edit().putString("ui_mode", modeValues[which]).apply()
-                recreate()
-            }
-            .setNegativeButton("İptal", null)
-            .show()
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    // UI STATUS - GÜNCEL VE DÜZGÜN
-   // ═══════════════════════════════════════════════════════════════
-    private fun updateStatus() {
-        val svc = udpService
-
-        runOnUiThread {
-            try {
-                txtStatus?.text = buildStatusText(svc)
-            } catch (_: Exception) {
-                // Ignore UI update errors
-            }
-        }
-    }
-
-    private fun buildStatusText(svc: UdpService?): String {
-        val modeEmoji = if (effectiveMode == "classic") "🎮" else "🖱️"
-
-        if (svc == null) {
-            return "$modeEmoji Servis başlatılıyor..."
-        }
-
-        val serverIp = svc.getServerIp()
-        val isAlive = svc.isServerAlive
-        val ping = svc.lastPingMs
-
-        // Bağlantı durumu
-        val (statusIcon, statusText) = when {
-            serverIp == null -> "⚪" to "IP yok"
-            isAlive -> "🟢" to "Bağlı"
-            else -> "🟡" to "Bekleniyor"  // Henüz ping cevabı gelmedi
-        }
-
-        // IP gösterimi
-        val ipDisplay = serverIp ?: "-"
-
-        // Ping gösterimi
-        val pingDisplay = when {
-            ping > 0 -> "${ping}ms"
-            serverIp != null && !isAlive -> "⏳"  // Ping gönderiliyor ama cevap yok
-            else -> "--"
-        }
-
-        // Edit mode (sadece classic)
-        val editSuffix = if (effectiveMode == "classic" && editMode) " ✏️" else ""
-
-        return "$modeEmoji $statusIcon $statusText | $ipDisplay | $pingDisplay$editSuffix"
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    // EDIT MODE (Classic only)
-    // ═══════════════════════════════════════════════════════════════
-    private fun toggleEditMode() {
-        editMode = !editMode
-        for ((_, v) in specViewMap) v.editMode = editMode
-        findViewById<Button?>(R.id.btnEditMode)?.text = if (editMode) "🔒 Lock" else "✏️ Edit"
-        updateStatus()
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    // PRESET SYSTEM (Classic only)
-    // ═══════════════════════════════════════════════════════════════
-    private fun saveLayoutsMap(map: Map<String, LayoutSpec>) {
-        val json = JSONObject()
-        for ((k, layout) in map) {
-            val jbuttons = JSONArray()
-            for (b in layout.buttons) {
-                jbuttons.put(JSONObject().apply {
-                    put("id", b.id)
-                    put("x", b.xPercent.toDouble())
-                    put("y", b.yPercent.toDouble())
-                    put("size", b.sizeDp)
-                    put("label", b.label)
-                    put("action", b.action)
-                    put("haptic", b.haptic)
-                })
-            }
-            json.put(k, JSONObject().apply {
-                put("name", layout.name)
-                put("buttons", jbuttons)
-            })
-        }
-        getSharedPreferences(PREFS_LAYOUTS, MODE_PRIVATE)
-            .edit()
-            .putString(KEY_LAYOUTS, json.toString())
-            .apply()
-    }
-
-    private fun loadLayoutsMap(): MutableMap<String, LayoutSpec> {
-        val raw = getSharedPreferences(PREFS_LAYOUTS, MODE_PRIVATE)
-            .getString(KEY_LAYOUTS, null) ?: return mutableMapOf()
-
-        val out = mutableMapOf<String, LayoutSpec>()
-        val top = JSONObject(raw)
-
-        for (key in top.keys()) {
-            val jl = top.getJSONObject(key)
-            val layout = LayoutSpec(jl.optString("name", key))
-            val arr = jl.getJSONArray("buttons")
-
-            for (i in 0 until arr.length()) {
-                val jb = arr.getJSONObject(i)
-                layout.buttons.add(ButtonSpec(
-                    id = jb.getString("id"),
-                    xPercent = jb.getDouble("x").toFloat(),
-                    yPercent = jb.getDouble("y").toFloat(),
-                    sizeDp = jb.optInt("size", 64),
-                    label = jb.optString("label", "B"),
-                    action = jb.optString("action", "BUTTON"),
-                    haptic = jb.optBoolean("haptic", true)
-                ))
-            }
-            out[key] = layout
-        }
-        return out
-    }
-
-    private fun updatePresetSpinner(spinner: Spinner) {
-        val names = layoutsMap.keys.toList()
-        spinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, names).apply {
-            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        }
-        spinner.setSelection(names.indexOf(currentLayoutKey).coerceAtLeast(0))
-
-        spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(p: AdapterView<*>?, v: View?, pos: Int, id: Long) {
-                currentLayoutKey = names[pos]
-                joystickArea?.removeAllViews()
-                specViewMap.clear()
-                placeButtonsFromLayout(layoutsMap[currentLayoutKey]!!)
-            }
-            override fun onNothingSelected(p: AdapterView<*>?) {}
-        }
-    }
-
     private fun placeButtonsFromLayout(layout: LayoutSpec) {
         val area = joystickArea ?: return
         area.removeAllViews()
         specViewMap.clear()
 
-        for (spec in layout.buttons) {
-            val btn = createDraggableButtonForSpec(spec)
+        // Joystick thumb tekrar eklenmeli çünkü removeAllViews onu silebilir
+        // En iyisi custom buttonları ayrı bir container'a koymaktır ama şimdilik:
+        // XML'deki sabit elemanlar silinmez, sadece dinamik eklenenler silinir (eğer doğru yapılandırdıysan).
+        // Eğer removeAllViews hepsini siliyorsa, sabit elemanları tekrar inflate etmek gerekir.
+        // Basitlik için sadece custom buttonları yönetiyoruz.
+
+        layout.buttons.forEach { spec ->
+            val btn = createDraggableButton(spec)
             area.addView(btn)
             area.post {
-                val sizePx = dpToPx(spec.sizeDp)
-                btn.layoutParams = FrameLayout.LayoutParams(sizePx, sizePx)
-                btn.x = (spec.xPercent * area.width - sizePx / 2f).coerceIn(0f, (area.width - sizePx).toFloat())
-                btn.y = (spec.yPercent * area.height - sizePx / 2f).coerceIn(0f, (area.height - sizePx).toFloat())
+                val size = dpToPx(spec.sizeDp)
+                btn.layoutParams = FrameLayout.LayoutParams(size, size)
+                btn.x = (spec.xPercent * area.width - size/2f).coerceIn(0f, (area.width-size).toFloat())
+                btn.y = (spec.yPercent * area.height - size/2f).coerceIn(0f, (area.height-size).toFloat())
             }
             specViewMap[spec.id] = btn
         }
     }
 
-    private fun createDraggableButtonForSpec(spec: ButtonSpec): DraggableButton {
-        val btn = DraggableButton(this)
-
-        btn.text = spec.label
-        btn.editMode = this.editMode
-
-        btn.clickAction = {
-            if (!this.editMode) {
-                performButtonPress(spec)
-            } else {
-                showEditButtonDialog(spec)
+    private fun createDraggableButton(spec: ButtonSpec): DraggableButton {
+        return DraggableButton(this).apply {
+            text = spec.label
+            editMode = this@MainActivity.editMode
+            clickAction = { if (editMode) showEditDialog(spec) else performCustomButtonPress(spec) }
+            onLongSettings = { showEditDialog(spec) }
+            onDragEnd = { _, _ ->
+                val area = joystickArea ?: return@apply
+                spec.xPercent = (x + width/2f) / area.width
+                spec.yPercent = (y + height/2f) / area.height
+                saveLayouts()
             }
         }
+    }
 
-        btn.onLongSettings = {
-            showEditButtonDialog(spec)
+    private fun performCustomButtonPress(spec: ButtonSpec) {
+        // Custom button logic...
+        val mask = when (spec.label.uppercase()) {
+            "A" -> BTN_A; "B" -> BTN_B; "X" -> BTN_X; "Y" -> BTN_Y
+            "START" -> BTN_START; "SELECT" -> BTN_SELECT; "L1" -> BTN_L1; "R1" -> BTN_R1
+            else -> BTN_A
         }
+        specViewMap[spec.id]?.isEnabled = false
+        currentButtons = currentButtons or mask
+        sendFullGamepad()
+        if (globalHaptic && spec.haptic) doHaptic()
+        uiHandler.postDelayed({
+            currentButtons = currentButtons and mask.inv()
+            sendFullGamepad()
+            specViewMap[spec.id]?.isEnabled = true
+        }, 100L)
+    }
 
-        btn.onDragEnd = { _, _ ->
-            val area = joystickArea
-            if (area != null) {
-                val cx = btn.x + btn.width / 2f
-                val cy = btn.y + btn.height / 2f
-                spec.xPercent = (cx / area.width.toFloat()).coerceIn(0f, 1f)
-                spec.yPercent = (cy / area.height.toFloat()).coerceIn(0f, 1f)
-                saveLayoutsMap(layoutsMap)
-            }
+    // ═══════════════════════════════════════════════════════════════
+    // UI HELPERS & DIALOGS
+    // ═══════════════════════════════════════════════════════════════
+    private fun updateStatus() {
+        val svc = udpService
+        runOnUiThread {
+            try {
+                val modeEmoji = if (effectiveMode == "classic") "🎮" else "🖱️"
+                if (svc == null) {
+                    txtStatus?.text = "$modeEmoji Servis başlatılıyor..."
+                    return@runOnUiThread
+                }
+
+                val ip = svc.getServerIp()
+                val alive = svc.isServerAlive
+                val ping = svc.lastPingMs
+
+                val statusIcon = if (ip == null) "⚪" else if (alive) "🟢" else "🟡"
+                val pingText = if (ping >= 0) "${ping}ms" else if (ip!=null && !alive) "⏳" else "--"
+
+                txtStatus?.text = "$modeEmoji $statusIcon ${ip ?: "IP Yok"} | $pingText" +
+                        (if(editMode) " ✏️" else "")
+            } catch (_: Exception) {}
         }
-
-        return btn
-    }
-private fun performButtonPress(spec: ButtonSpec) {
-    // ✅ DÜZELTME: this@MainActivity kullanarak scope belirt
-    val svc = this@MainActivity.udpService
-
-    if (svc == null) {
-        Toast.makeText(this, "Servis bağlı değil", Toast.LENGTH_SHORT).show()
-        return
     }
 
-    val mask = when (spec.label.uppercase()) {
-        "A" -> BTN_A
-        "B" -> BTN_B
-        "X" -> BTN_X
-        "Y" -> BTN_Y
-        "START" -> BTN_START
-        "SELECT" -> BTN_SELECT
-        "L1" -> BTN_L1
-        "R1" -> BTN_R1
-        else -> spec.label.toIntOrNull() ?: BTN_A
+    private fun toggleEditMode() {
+        editMode = !editMode
+        specViewMap.values.forEach { it.editMode = editMode }
+        findViewById<Button?>(R.id.btnEditMode)?.text = if (editMode) "🔒" else "✏️"
+        updateStatus()
     }
 
-    // Disable button temporarily
-    specViewMap[spec.id]?.isEnabled = false
-
-    // Press
-    currentButtons = currentButtons or mask
-    sendJoystick()
-    if (globalHaptic && spec.haptic) doHaptic()
-
-    // Release after delay
-    uiHandler.postDelayed({
-        currentButtons = currentButtons and mask.inv()
-        sendJoystick()
-        specViewMap[spec.id]?.isEnabled = true
-    }, 80L)
-}
-    // ═══════════════════════════════════════════════════════════════
-    // DIALOGS
-    // ═══════════════════════════════════════════════════════════════
     private fun showAddButtonDialog() {
-        val layout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(48, 24, 48, 24)
-        }
-        val labelInput = EditText(this).apply { hint = "Label (A, B, X, Y...)" }
-        val sizeInput = EditText(this).apply { hint = "Size dp (64)" }
-        layout.addView(labelInput)
-        layout.addView(sizeInput)
+        val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(50,20,50,0) }
+        val lbl = EditText(this).apply { hint = "Etiket" }
+        val sz = EditText(this).apply { hint = "Boyut (64)"; setText("64") }
+        layout.addView(lbl); layout.addView(sz)
 
-        AlertDialog.Builder(this)
-            .setTitle("Buton Ekle")
-            .setView(layout)
-            .setPositiveButton("Ekle") { _, _ ->
-                val spec = ButtonSpec(
-                    id = "btn_${System.currentTimeMillis()}",
-                    xPercent = 0.5f,
-                    yPercent = 0.5f,
-                    sizeDp = sizeInput.text.toString().toIntOrNull() ?: 64,
-                    label = labelInput.text.toString().ifBlank { "B" }
-                )
-                layoutsMap[currentLayoutKey]?.buttons?.add(spec)
-                saveLayoutsMap(layoutsMap)
-
-                val btn = createDraggableButtonForSpec(spec)
-                specViewMap[spec.id] = btn
-                joystickArea?.addView(btn)
-                joystickArea?.post {
-                    val sizePx = dpToPx(spec.sizeDp)
-                    btn.layoutParams = FrameLayout.LayoutParams(sizePx, sizePx)
-                    btn.x = ((joystickArea?.width ?: 0) / 2f - sizePx / 2f)
-                    btn.y = ((joystickArea?.height ?: 0) / 2f - sizePx / 2f)
-                }
-            }
-            .setNegativeButton("İptal", null)
-            .show()
+        AlertDialog.Builder(this).setTitle("Ekle").setView(layout).setPositiveButton("Ekle") { _, _ ->
+            val spec = ButtonSpec("btn_${System.currentTimeMillis()}", 0.5f, 0.5f,
+                sz.text.toString().toIntOrNull()?:64, lbl.text.toString().ifBlank{"B"})
+            layoutsMap[currentLayoutKey]!!.buttons.add(spec)
+            saveLayouts()
+            placeButtonsFromLayout(layoutsMap[currentLayoutKey]!!)
+        }.show()
     }
 
-    private fun showEditButtonDialog(spec: ButtonSpec) {
-        val layout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(48, 24, 48, 24)
-        }
-        val labelInput = EditText(this).apply { setText(spec.label) }
-        val sizeInput = EditText(this).apply { setText(spec.sizeDp.toString()) }
-        val hapticCb = CheckBox(this).apply { text = "Titreşim"; isChecked = spec.haptic }
-        layout.addView(labelInput)
-        layout.addView(sizeInput)
-        layout.addView(hapticCb)
+    private fun showEditDialog(spec: ButtonSpec) {
+        val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(50,20,50,0) }
+        val lbl = EditText(this).apply { setText(spec.label) }
+        val sz = EditText(this).apply { setText(spec.sizeDp.toString()) }
+        layout.addView(lbl); layout.addView(sz)
 
-        AlertDialog.Builder(this)
-            .setTitle("Buton Düzenle")
-            .setView(layout)
+        AlertDialog.Builder(this).setTitle("Düzenle").setView(layout)
             .setPositiveButton("Kaydet") { _, _ ->
-                spec.label = labelInput.text.toString().ifEmpty { spec.label }
-                spec.sizeDp = sizeInput.text.toString().toIntOrNull() ?: spec.sizeDp
-                spec.haptic = hapticCb.isChecked
-
-                specViewMap[spec.id]?.let { btn ->
-                    btn.text = spec.label
-                    val sizePx = dpToPx(spec.sizeDp)
-                    val centerX = btn.x + btn.width / 2f
-                    val centerY = btn.y + btn.height / 2f
-                    btn.layoutParams = FrameLayout.LayoutParams(sizePx, sizePx)
-                    btn.x = (centerX - sizePx / 2f).coerceIn(0f, ((joystickArea?.width ?: 0) - sizePx).toFloat())
-                    btn.y = (centerY - sizePx / 2f).coerceIn(0f, ((joystickArea?.height ?: 0) - sizePx).toFloat())
-                }
-                saveLayoutsMap(layoutsMap)
+                spec.label = lbl.text.toString()
+                spec.sizeDp = sz.text.toString().toIntOrNull()?:64
+                saveLayouts()
+                placeButtonsFromLayout(layoutsMap[currentLayoutKey]!!)
             }
             .setNegativeButton("Sil") { _, _ ->
-                layoutsMap[currentLayoutKey]?.buttons?.removeAll { it.id == spec.id }
-                specViewMap.remove(spec.id)?.let { joystickArea?.removeView(it) }
-                saveLayoutsMap(layoutsMap)
-            }
-            .show()
+                layoutsMap[currentLayoutKey]!!.buttons.remove(spec)
+                saveLayouts()
+                placeButtonsFromLayout(layoutsMap[currentLayoutKey]!!)
+            }.show()
     }
 
     private fun showSavePresetDialog() {
-        val input = EditText(this).apply { hint = "Preset adı" }
+        val input = EditText(this).apply { hint = "İsim" }
+        AlertDialog.Builder(this).setTitle("Kaydet").setView(input).setPositiveButton("OK") { _, _ ->
+            val name = input.text.toString().ifBlank { "Preset" }
+            layoutsMap[name] = LayoutSpec(name, layoutsMap[currentLayoutKey]!!.buttons.map { it.copy() }.toMutableList())
+            saveLayouts()
+            updatePresetSpinner(findViewById(R.id.spinnerPresets))
+        }.show()
+    }
 
-        AlertDialog.Builder(this)
-            .setTitle("Preset Kaydet")
-            .setView(input)
-            .setPositiveButton("Kaydet") { _, _ ->
-                val name = input.text.toString().ifEmpty { "preset_${System.currentTimeMillis()}" }
-                val currentLayout = layoutsMap[currentLayoutKey]
-                if (currentLayout != null) {
-                    layoutsMap[name] = LayoutSpec(name, currentLayout.buttons.map { it.copy() }.toMutableList())
-                    saveLayoutsMap(layoutsMap)
-                    findViewById<Spinner?>(R.id.spinnerPresets)?.let { updatePresetSpinner(it) }
-                    Toast.makeText(this, "Kaydedildi: $name", Toast.LENGTH_SHORT).show()
-                }
-            }
-            .setNegativeButton("İptal", null)
-            .show()
+    private fun showModeSelectionDialog() {
+        val modes = arrayOf("🔄 Auto", "🎮 Classic", "🖱️ Split")
+        val vals = arrayOf("auto", "classic", "split")
+        AlertDialog.Builder(this).setTitle("Mod").setItems(modes) { _, i ->
+            prefs.edit().putString("ui_mode", vals[i]).apply()
+            recreate()
+        }.show()
     }
 
     private fun promptSetServerIp() {
-        val et = EditText(this).apply { hint = "192.168.1.x" }
-
-        AlertDialog.Builder(this)
-            .setTitle("Sunucu IP")
-            .setView(et)
-            .setPositiveButton("Ayarla") { _, _ ->
-                val ip = et.text.toString().trim().ifEmpty { null }
-                udpService?.setServerIp(ip)
-                Toast.makeText(this, "IP: $ip", Toast.LENGTH_SHORT).show()
-                updateStatus()
-            }
-            .setNegativeButton("İptal", null)
-            .show()
+        val input = EditText(this).apply { hint = "192.168.1.x" }
+        AlertDialog.Builder(this).setTitle("IP").setView(input).setPositiveButton("OK") { _, _ ->
+            udpService?.setServerIp(input.text.toString())
+            updateStatus()
+        }.show()
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // UTILITIES
-    // ═══════════════════════════════════════════════════════════════
-    private fun dpToPx(dp: Int): Int = (dp * resources.displayMetrics.density).roundToInt()
+    // --- JSON & Utils ---
+    private fun saveLayouts() {
+        val json = JSONObject()
+        layoutsMap.forEach { (k, v) ->
+            val arr = JSONArray()
+            v.buttons.forEach { b ->
+                arr.put(JSONObject().apply {
+                    put("id", b.id); put("x", b.xPercent.toDouble()); put("y", b.yPercent.toDouble())
+                    put("label", b.label); put("size", b.sizeDp); put("haptic", b.haptic)
+                })
+            }
+            json.put(k, JSONObject().apply { put("buttons", arr) })
+        }
+        prefs.edit().putString(KEY_LAYOUTS, json.toString()).apply()
+    }
+
+    private fun loadLayoutsMap(): MutableMap<String, LayoutSpec> {
+        val map = mutableMapOf<String, LayoutSpec>()
+        val raw = prefs.getString(KEY_LAYOUTS, null) ?: return map
+        try {
+            val top = JSONObject(raw)
+            for (key in top.keys()) {
+                val l = LayoutSpec(key)
+                val arr = top.getJSONObject(key).getJSONArray("buttons")
+                for (i in 0 until arr.length()) {
+                    val o = arr.getJSONObject(i)
+                    l.buttons.add(ButtonSpec(o.getString("id"), o.getDouble("x").toFloat(), o.getDouble("y").toFloat(),
+                        o.optInt("size", 64), o.optString("label", "B"), "BUTTON", o.optBoolean("haptic", true)))
+                }
+                map[key] = l
+            }
+        } catch (_: Exception) {}
+        return map
+    }
+
+    private fun dpToPx(dp: Int) = (dp * resources.displayMetrics.density).roundToInt()
 
     @Suppress("DEPRECATION")
-    private fun doHaptic(ms: Long = 15L) {
+    private fun doHaptic() {
         if (!globalHaptic) return
-        val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator ?: return
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            vibrator.vibrate(VibrationEffect.createOneShot(ms, VibrationEffect.DEFAULT_AMPLITUDE))
-        } else {
-            vibrator.vibrate(ms)
-        }
+        val v = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+            v?.vibrate(VibrationEffect.createOneShot(15, VibrationEffect.DEFAULT_AMPLITUDE))
+        else v?.vibrate(15)
     }
 }

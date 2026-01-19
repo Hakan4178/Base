@@ -5,189 +5,378 @@
     android:id="@+id/root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#000000">
+    android:background="#0D0D0D">
 
+    <!-- ═══════════════════════════════════════════════════════════════ -->
     <!-- ÜST BAR -->
+    <!-- ═══════════════════════════════════════════════════════════════ -->
     <ImageButton
         android:id="@+id/btnMenu"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
         android:background="?attr/selectableItemBackgroundBorderless"
         android:contentDescription="Menü"
-        android:padding="12dp"
+        android:padding="10dp"
         android:src="@android:drawable/ic_menu_more"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        app:tint="@color/purple_700" />
+        app:tint="#888888" />
 
     <TextView
         android:id="@+id/txtStatus"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:background="#33000000"
+        android:background="#22000000"
         android:gravity="center_vertical"
-        android:padding="12dp"
-        android:text="Gamepad Modu"
-        android:textColor="#FFFFFF"
-        android:textSize="14sp"
+        android:paddingHorizontal="12dp"
+        android:text="🎮 Gamepad | Bağlanıyor..."
+        android:textColor="#CCCCCC"
+        android:textSize="13sp"
+        android:singleLine="true"
         app:layout_constraintBottom_toBottomOf="@id/btnMenu"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toEndOf="@id/btnMenu"
         app:layout_constraintTop_toTopOf="@id/btnMenu" />
 
-    <!-- JOYSTICK ALANI (Sol taraf) -->
-    <FrameLayout
-        android:id="@+id/joystickArea"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:background="#22FF5722"
-        app:layout_constraintBottom_toTopOf="@id/controlBar"
-        app:layout_constraintEnd_toStartOf="@id/guidelineCenter"
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <!-- TRIGGER BUTONLARI (L2/R2) - En üstte -->
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <androidx.appcompat.widget.AppCompatButton
+        android:id="@+id/btnL2"
+        android:layout_width="90dp"
+        android:layout_height="36dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="4dp"
+        android:background="@drawable/trigger_button"
+        android:text="L2"
+        android:textColor="#FFFFFF"
+        android:textSize="14sp"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/btnMenu">
+        app:layout_constraintTop_toBottomOf="@id/btnMenu" />
 
-        <!-- Joystick görsel ipucu -->
-        <View
-            android:id="@+id/joystickVisual"
-            android:layout_width="120dp"
-            android:layout_height="120dp"
-            android:layout_gravity="center"
-            android:background="@drawable/joystick_circle"
-            android:alpha="0.4" />
+    <androidx.appcompat.widget.AppCompatButton
+        android:id="@+id/btnR2"
+        android:layout_width="90dp"
+        android:layout_height="36dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginTop="4dp"
+        android:background="@drawable/trigger_button"
+        android:text="R2"
+        android:textColor="#FFFFFF"
+        android:textSize="14sp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/btnMenu" />
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="bottom|center_horizontal"
-            android:layout_marginBottom="8dp"
-            android:text="JOYSTICK"
-            android:textColor="#55FFFFFF"
-            android:textSize="10sp" />
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <!-- SHOULDER BUTONLARI (L1/R1) -->
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <androidx.appcompat.widget.AppCompatButton
+        android:id="@+id/btnL1"
+        android:layout_width="90dp"
+        android:layout_height="36dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="4dp"
+        android:background="@drawable/shoulder_button"
+        android:text="L1"
+        android:textColor="#FFFFFF"
+        android:textSize="14sp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/btnL2" />
 
-    </FrameLayout>
+    <androidx.appcompat.widget.AppCompatButton
+        android:id="@+id/btnR1"
+        android:layout_width="90dp"
+        android:layout_height="36dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginTop="4dp"
+        android:background="@drawable/shoulder_button"
+        android:text="R1"
+        android:textColor="#FFFFFF"
+        android:textSize="14sp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/btnR2" />
 
-    <!-- Orta çizgi -->
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <!-- ANA OYUN ALANI - 3 Sütun -->
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Sol sütun guideline (%35) -->
     <androidx.constraintlayout.widget.Guideline
-        android:id="@+id/guidelineCenter"
+        android:id="@+id/guidelineLeft"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        app:layout_constraintGuide_percent="0.45" />
+        app:layout_constraintGuide_percent="0.35" />
 
-    <!-- BUTONLAR ALANI (Sağ taraf) -->
+    <!-- Sağ sütun guideline (%65) -->
+    <androidx.constraintlayout.widget.Guideline
+        android:id="@+id/guidelineRight"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        app:layout_constraintGuide_percent="0.65" />
+
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <!-- SOL TARAF: D-PAD + LEFT STICK -->
+    <!-- ═══════════════════════════════════════════════════════════════ -->
     <FrameLayout
-        android:id="@+id/buttonsArea"
+        android:id="@+id/leftArea"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:background="#11FFFFFF"
         app:layout_constraintBottom_toTopOf="@id/controlBar"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toEndOf="@id/guidelineCenter"
-        app:layout_constraintTop_toBottomOf="@id/btnMenu">
+        app:layout_constraintEnd_toStartOf="@id/guidelineLeft"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/btnL1">
 
-        <!-- A, B, X, Y Butonları -->
-        <androidx.appcompat.widget.AppCompatButton
-            android:id="@+id/btnA"
-            android:layout_width="60dp"
-            android:layout_height="60dp"
-            android:layout_gravity="center"
-            android:layout_marginTop="60dp"
-            android:background="@drawable/gamepad_button_green"
-            android:text="A"
-            android:textColor="#FFFFFF"
-            android:textSize="18sp"
-            android:textStyle="bold" />
+        <!-- D-PAD Container -->
+        <FrameLayout
+            android:id="@+id/dpadContainer"
+            android:layout_width="140dp"
+            android:layout_height="140dp"
+            android:layout_gravity="top|center_horizontal"
+            android:layout_marginTop="16dp">
 
-        <androidx.appcompat.widget.AppCompatButton
-            android:id="@+id/btnB"
-            android:layout_width="60dp"
-            android:layout_height="60dp"
-            android:layout_gravity="center"
-            android:layout_marginStart="70dp"
-            android:background="@drawable/gamepad_button_red"
-            android:text="B"
-            android:textColor="#FFFFFF"
-            android:textSize="18sp"
-            android:textStyle="bold" />
+            <!-- D-PAD Yukarı -->
+            <ImageButton
+                android:id="@+id/btnDpadUp"
+                android:layout_width="50dp"
+                android:layout_height="50dp"
+                android:layout_gravity="top|center_horizontal"
+                android:background="@drawable/dpad_button"
+                android:contentDescription="Yukarı"
+                android:rotation="0"
+                android:src="@drawable/ic_arrow_up"
+                app:tint="#FFFFFF" />
 
-        <androidx.appcompat.widget.AppCompatButton
-            android:id="@+id/btnX"
-            android:layout_width="60dp"
-            android:layout_height="60dp"
-            android:layout_gravity="center"
-            android:layout_marginEnd="70dp"
-            android:background="@drawable/gamepad_button_blue"
-            android:text="X"
-            android:textColor="#FFFFFF"
-            android:textSize="18sp"
-            android:textStyle="bold" />
+            <!-- D-PAD Aşağı -->
+            <ImageButton
+                android:id="@+id/btnDpadDown"
+                android:layout_width="50dp"
+                android:layout_height="50dp"
+                android:layout_gravity="bottom|center_horizontal"
+                android:background="@drawable/dpad_button"
+                android:contentDescription="Aşağı"
+                android:rotation="180"
+                android:src="@drawable/ic_arrow_up"
+                app:tint="#FFFFFF" />
 
-        <androidx.appcompat.widget.AppCompatButton
-            android:id="@+id/btnY"
-            android:layout_width="60dp"
-            android:layout_height="60dp"
-            android:layout_gravity="center"
-            android:layout_marginBottom="60dp"
-            android:background="@drawable/gamepad_button_yellow"
-            android:text="Y"
-            android:textColor="#FFFFFF"
-            android:textSize="18sp"
-            android:textStyle="bold" />
+            <!-- D-PAD Sol -->
+            <ImageButton
+                android:id="@+id/btnDpadLeft"
+                android:layout_width="50dp"
+                android:layout_height="50dp"
+                android:layout_gravity="center_vertical|start"
+                android:background="@drawable/dpad_button"
+                android:contentDescription="Sol"
+                android:rotation="270"
+                android:src="@drawable/ic_arrow_up"
+                app:tint="#FFFFFF" />
 
-        <!-- Shoulder butonları -->
-        <androidx.appcompat.widget.AppCompatButton
-            android:id="@+id/btnL1"
-            android:layout_width="70dp"
-            android:layout_height="40dp"
-            android:layout_gravity="top|start"
-            android:layout_margin="16dp"
-            android:background="@drawable/shoulder_button"
-            android:text="L1"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp" />
+            <!-- D-PAD Sağ -->
+            <ImageButton
+                android:id="@+id/btnDpadRight"
+                android:layout_width="50dp"
+                android:layout_height="50dp"
+                android:layout_gravity="center_vertical|end"
+                android:background="@drawable/dpad_button"
+                android:contentDescription="Sağ"
+                android:rotation="90"
+                android:src="@drawable/ic_arrow_up"
+                app:tint="#FFFFFF" />
 
-        <androidx.appcompat.widget.AppCompatButton
-            android:id="@+id/btnR1"
-            android:layout_width="70dp"
-            android:layout_height="40dp"
-            android:layout_gravity="top|end"
-            android:layout_margin="16dp"
-            android:background="@drawable/shoulder_button"
-            android:text="R1"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp" />
+            <!-- D-PAD Orta (görsel) -->
+            <View
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_gravity="center"
+                android:background="@drawable/dpad_center" />
 
-        <!-- Start/Select -->
-        <androidx.appcompat.widget.AppCompatButton
-            android:id="@+id/btnSelect"
-            android:layout_width="60dp"
-            android:layout_height="35dp"
-            android:layout_gravity="bottom|start"
-            android:layout_margin="16dp"
-            android:background="@drawable/small_button"
-            android:text="SEL"
-            android:textColor="#AAAAAA"
-            android:textSize="10sp" />
+        </FrameLayout>
 
-        <androidx.appcompat.widget.AppCompatButton
-            android:id="@+id/btnStart"
-            android:layout_width="60dp"
-            android:layout_height="35dp"
-            android:layout_gravity="bottom|end"
-            android:layout_margin="16dp"
-            android:background="@drawable/small_button"
-            android:text="START"
-            android:textColor="#AAAAAA"
-            android:textSize="10sp" />
+        <!-- LEFT STICK (Joystick) -->
+        <FrameLayout
+            android:id="@+id/joystickArea"
+            android:layout_width="130dp"
+            android:layout_height="130dp"
+            android:layout_gravity="bottom|center_horizontal"
+            android:layout_marginBottom="24dp"
+            android:background="@drawable/joystick_background">
+
+            <!-- Joystick görsel -->
+            <View
+                android:id="@+id/joystickThumb"
+                android:layout_width="50dp"
+                android:layout_height="50dp"
+                android:layout_gravity="center"
+                android:background="@drawable/joystick_thumb" />
+
+            <!-- L3 etiketi -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="bottom|center_horizontal"
+                android:layout_marginBottom="-16dp"
+                android:text="L3"
+                android:textColor="#55FFFFFF"
+                android:textSize="10sp" />
+
+        </FrameLayout>
 
     </FrameLayout>
 
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <!-- ORTA: SELECT / START / HOME -->
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <LinearLayout
+        android:id="@+id/centerButtons"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:padding="8dp"
+        app:layout_constraintBottom_toTopOf="@id/controlBar"
+        app:layout_constraintEnd_toStartOf="@id/guidelineRight"
+        app:layout_constraintStart_toEndOf="@id/guidelineLeft">
+
+        <androidx.appcompat.widget.AppCompatButton
+            android:id="@+id/btnSelect"
+            android:layout_width="55dp"
+            android:layout_height="32dp"
+            android:layout_marginEnd="8dp"
+            android:background="@drawable/small_button"
+            android:text="SEL"
+            android:textColor="#AAAAAA"
+            android:textSize="9sp" />
+
+        <androidx.appcompat.widget.AppCompatButton
+            android:id="@+id/btnHome"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_marginHorizontal="12dp"
+            android:background="@drawable/home_button"
+            android:text="⌂"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp" />
+
+        <androidx.appcompat.widget.AppCompatButton
+            android:id="@+id/btnStart"
+            android:layout_width="55dp"
+            android:layout_height="32dp"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/small_button"
+            android:text="START"
+            android:textColor="#AAAAAA"
+            android:textSize="9sp" />
+
+    </LinearLayout>
+
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <!-- SAĞ TARAF: A/B/X/Y + RIGHT STICK -->
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <FrameLayout
+        android:id="@+id/rightArea"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:layout_constraintBottom_toTopOf="@id/controlBar"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toEndOf="@id/guidelineRight"
+        app:layout_constraintTop_toBottomOf="@id/btnR1">
+
+        <!-- A/B/X/Y Butonları Container -->
+        <FrameLayout
+            android:id="@+id/abxyContainer"
+            android:layout_width="150dp"
+            android:layout_height="150dp"
+            android:layout_gravity="top|center_horizontal"
+            android:layout_marginTop="8dp">
+
+            <!-- Y (Üst) -->
+            <androidx.appcompat.widget.AppCompatButton
+                android:id="@+id/btnY"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:layout_gravity="top|center_horizontal"
+                android:background="@drawable/gamepad_button_yellow"
+                android:text="Y"
+                android:textColor="#000000"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <!-- A (Alt) -->
+            <androidx.appcompat.widget.AppCompatButton
+                android:id="@+id/btnA"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:layout_gravity="bottom|center_horizontal"
+                android:background="@drawable/gamepad_button_green"
+                android:text="A"
+                android:textColor="#FFFFFF"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <!-- X (Sol) -->
+            <androidx.appcompat.widget.AppCompatButton
+                android:id="@+id/btnX"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:layout_gravity="center_vertical|start"
+                android:background="@drawable/gamepad_button_blue"
+                android:text="X"
+                android:textColor="#FFFFFF"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <!-- B (Sağ) -->
+            <androidx.appcompat.widget.AppCompatButton
+                android:id="@+id/btnB"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:layout_gravity="center_vertical|end"
+                android:background="@drawable/gamepad_button_red"
+                android:text="B"
+                android:textColor="#FFFFFF"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+        </FrameLayout>
+
+        <!-- RIGHT STICK -->
+        <FrameLayout
+            android:id="@+id/rightJoystickArea"
+            android:layout_width="110dp"
+            android:layout_height="110dp"
+            android:layout_gravity="bottom|center_horizontal"
+            android:layout_marginBottom="24dp"
+            android:background="@drawable/joystick_background_small">
+
+            <View
+                android:id="@+id/rightJoystickThumb"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_gravity="center"
+                android:background="@drawable/joystick_thumb" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="bottom|center_horizontal"
+                android:layout_marginBottom="-14dp"
+                android:text="R3"
+                android:textColor="#55FFFFFF"
+                android:textSize="10sp" />
+
+        </FrameLayout>
+
+    </FrameLayout>
+
+    <!-- ═══════════════════════════════════════════════════════════════ -->
     <!-- ALT KONTROL BARI -->
+    <!-- ═══════════════════════════════════════════════════════════════ -->
     <HorizontalScrollView
         android:id="@+id/controlBar"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:background="#CC000000"
+        android:background="#DD111111"
         android:fillViewport="true"
         android:scrollbars="none"
         app:layout_constraintBottom_toBottomOf="parent"
@@ -200,78 +389,82 @@
             android:gravity="center_vertical"
             android:orientation="horizontal"
             android:paddingHorizontal="8dp"
-            android:paddingVertical="4dp">
+            android:paddingVertical="2dp">
 
             <androidx.appcompat.widget.AppCompatButton
                 android:id="@+id/btnEditMode"
                 style="@style/Widget.AppCompat.Button.Borderless"
                 android:layout_width="wrap_content"
-                android:layout_height="40dp"
-                android:text="Edit"
+                android:layout_height="36dp"
+                android:text="✏️ Edit"
                 android:textColor="#FFFFFF"
-                android:textSize="12sp" />
+                android:textSize="11sp" />
 
             <androidx.appcompat.widget.AppCompatButton
                 android:id="@+id/btnAdd"
                 style="@style/Widget.AppCompat.Button.Borderless"
                 android:layout_width="wrap_content"
-                android:layout_height="40dp"
-                android:text="Add"
+                android:layout_height="36dp"
+                android:text="➕"
                 android:textColor="#FFFFFF"
-                android:textSize="12sp" />
+                android:textSize="11sp" />
 
             <androidx.appcompat.widget.AppCompatButton
                 android:id="@+id/btnDiscover"
                 style="@style/Widget.AppCompat.Button.Borderless"
                 android:layout_width="wrap_content"
-                android:layout_height="40dp"
-                android:text="Discover"
+                android:layout_height="36dp"
+                android:text="🔍"
                 android:textColor="#FFFFFF"
-                android:textSize="12sp" />
+                android:textSize="11sp" />
 
             <Switch
                 android:id="@+id/switchCenterTouch"
                 android:layout_width="wrap_content"
-                android:layout_height="40dp"
-                android:layout_marginStart="8dp"
+                android:layout_height="36dp"
+                android:layout_marginStart="4dp"
                 android:checked="true"
                 android:text="Center"
-                android:textColor="#AAAAAA"
-                android:textSize="10sp" />
+                android:textColor="#888888"
+                android:textSize="9sp"
+                android:scaleX="0.8"
+                android:scaleY="0.8" />
 
             <Switch
                 android:id="@+id/switchHaptic"
                 android:layout_width="wrap_content"
-                android:layout_height="40dp"
-                android:layout_marginStart="4dp"
+                android:layout_height="36dp"
                 android:checked="true"
-                android:text="Haptic"
-                android:textColor="#AAAAAA"
-                android:textSize="10sp" />
+                android:text="Vibe"
+                android:textColor="#888888"
+                android:textSize="9sp"
+                android:scaleX="0.8"
+                android:scaleY="0.8" />
 
             <Spinner
                 android:id="@+id/spinnerPresets"
-                android:layout_width="100dp"
-                android:layout_height="40dp"
-                android:layout_marginStart="8dp"
-                android:background="@android:drawable/btn_dropdown" />
+                android:layout_width="80dp"
+                android:layout_height="32dp"
+                android:layout_marginStart="4dp"
+                android:background="@drawable/spinner_bg" />
 
             <androidx.appcompat.widget.AppCompatButton
                 android:id="@+id/btnSavePreset"
                 style="@style/Widget.AppCompat.Button.Borderless"
                 android:layout_width="wrap_content"
-                android:layout_height="40dp"
-                android:text="Save"
+                android:layout_height="36dp"
+                android:text="💾"
                 android:textColor="#FFFFFF"
-                android:textSize="12sp" />
+                android:textSize="11sp" />
 
             <androidx.appcompat.widget.AppCompatButton
                 android:id="@+id/btnChangeMode"
-                style="@style/Widget.AppCompat.Button.Borderless.Colored"
+                style="@style/Widget.AppCompat.Button.Borderless"
                 android:layout_width="wrap_content"
-                android:layout_height="40dp"
-                android:text="🎮 Gamepad"
-                android:textSize="12sp" />
+                android:layout_height="36dp"
+                android:text="🖱️"
+                android:textColor="#4FC3F7"
+                android:textSize="11sp" />
 
         </LinearLayout>
     </HorizontalScrollView>
