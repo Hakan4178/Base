@@ -115,11 +115,28 @@ class MainActivity : AppCompatActivity() {
         private const val TAG = "MainActivity"
     }
 
-    // Ping receiver
-    private val pingReceiver = object : android.content.BroadcastReceiver() {
+    // Ping receiver -> Status receiver olarak güncelle
+    private val statusReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == "com.benim.ACTION_PING") {
-                updateStatus()
+            if (intent?.action != UdpService.ACTION_STATUS) return
+
+            val type = intent.getStringExtra(UdpService.EXTRA_TYPE) ?: return
+            val message = intent.getStringExtra(UdpService.EXTRA_MESSAGE) ?: ""
+            val ping = intent.getLongExtra(UdpService.EXTRA_PING, -1)
+            val serverIp = intent.getStringExtra(UdpService.EXTRA_SERVER_IP)
+            val isAlive = intent.getBooleanExtra(UdpService.EXTRA_IS_ALIVE, false)
+
+            // UI güncelle
+            updateStatus()
+
+            // Bazı durumlarda ek Toast göster (opsiyonel, Service zaten gösteriyor)
+            when (type) {
+                UdpService.TYPE_DISCOVERY_SUCCESS -> {
+                    // Service zaten Toast gösterdi
+                }
+                UdpService.TYPE_PING_UPDATE -> {
+                    // Her ping'de Toast gösterme, sadece UI güncelle
+                }
             }
         }
     }
@@ -162,18 +179,17 @@ class MainActivity : AppCompatActivity() {
 
         // Register receiver & load data
         // ✅ DÜZELTME: Android 14 için RECEIVER_EXPORTED veya RECEIVER_NOT_EXPORTED bayrağı ekleyin
+        // Register status receiver
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            // API 33 (Android 13) ve üzeri için ContextCompat kullanın
             ContextCompat.registerReceiver(
                 this,
-                pingReceiver,
-                IntentFilter("com.benim.ACTION_PING"),
+                statusReceiver,
+                IntentFilter(UdpService.ACTION_STATUS),
                 ContextCompat.RECEIVER_NOT_EXPORTED
             )
         } else {
-            // API 33'ten önceki versiyonlar için eski yöntem
             @Suppress("DEPRECATION")
-            registerReceiver(pingReceiver, IntentFilter("com.benim.ACTION_PING"))
+            registerReceiver(statusReceiver, IntentFilter(UdpService.ACTION_STATUS))
         }
 
         // Start service
@@ -201,7 +217,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        try { unregisterReceiver(pingReceiver) } catch (_: Exception) {}
+        try { unregisterReceiver(statusReceiver) } catch (_: Exception) {}
         try { unbindService(serviceConnection) } catch (_: Exception) {}
         statusTimer?.cancel()
         super.onDestroy()
@@ -518,29 +534,52 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // UI STATUS
-    // ═══════════════════════════════════════════════════════════════
+    // UI STATUS - GÜNCEL VE DÜZGÜN
+   // ═══════════════════════════════════════════════════════════════
     private fun updateStatus() {
         val svc = udpService
+
         runOnUiThread {
-            val modeEmoji = if (effectiveMode == "classic") "🎮" else "🖱️"
-            val modeName = if (effectiveMode == "classic") "Gamepad" else "Mouse"
-
-            if (svc == null) {
-                txtStatus?.text = "$modeEmoji $modeName | Bağlanıyor..."
-            } else {
-                val target = try { svc.getServerIp() ?: "?" } catch (_: Exception) { "?" }
-                val ping = try {
-                    if (svc.lastPingMs >= 0) "${svc.lastPingMs}ms" else "--"
-                } catch (_: Exception) { "--" }
-
-                val extra = if (effectiveMode == "classic" && editMode) " | ✏️ Edit" else ""
-                txtStatus?.text = "$modeEmoji $modeName | $target | $ping$extra"
+            try {
+                txtStatus?.text = buildStatusText(svc)
+            } catch (_: Exception) {
+                // Ignore UI update errors
             }
-
-            // Update ping text if exists (split mode)
-            findViewById<TextView?>(R.id.txtPing)?.text = "Ping: ${svc?.lastPingMs ?: "--"}ms"
         }
+    }
+
+    private fun buildStatusText(svc: UdpService?): String {
+        val modeEmoji = if (effectiveMode == "classic") "🎮" else "🖱️"
+
+        if (svc == null) {
+            return "$modeEmoji Servis başlatılıyor..."
+        }
+
+        val serverIp = svc.getServerIp()
+        val isAlive = svc.isServerAlive
+        val ping = svc.lastPingMs
+
+        // Bağlantı durumu
+        val (statusIcon, statusText) = when {
+            serverIp == null -> "⚪" to "IP yok"
+            isAlive -> "🟢" to "Bağlı"
+            else -> "🟡" to "Bekleniyor"  // Henüz ping cevabı gelmedi
+        }
+
+        // IP gösterimi
+        val ipDisplay = serverIp ?: "-"
+
+        // Ping gösterimi
+        val pingDisplay = when {
+            ping > 0 -> "${ping}ms"
+            serverIp != null && !isAlive -> "⏳"  // Ping gönderiliyor ama cevap yok
+            else -> "--"
+        }
+
+        // Edit mode (sadece classic)
+        val editSuffix = if (effectiveMode == "classic" && editMode) " ✏️" else ""
+
+        return "$modeEmoji $statusIcon $statusText | $ipDisplay | $pingDisplay$editSuffix"
     }
 
     // ═══════════════════════════════════════════════════════════════

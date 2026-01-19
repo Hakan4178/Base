@@ -1,14 +1,13 @@
-// Güncellenmiş UdpService.kt
-// Değişiklikler: Yeni paket tipleri eklendi (MOUSE_MOVE, MOUSE_BUTTON, MOUSE_WHEEL)
-// sendJoystick genelleştirildi, sendRaw eklendi (her türlü paket için)
-
 package com.benim.benim.net
 
 import android.app.Service
 import android.content.Intent
 import android.os.Binder
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.util.Log
+import android.widget.Toast
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
@@ -25,6 +24,27 @@ class UdpService : Service() {
         private const val PACKET_MOUSE_BUTTON: Byte = 0x03
         private const val PACKET_MOUSE_WHEEL: Byte = 0x04
         private const val TAG = "UdpService"
+        private const val SERVER_TIMEOUT_MS = 5000L
+
+        // Broadcast Action'ları
+        const val ACTION_STATUS = "com.benim.ACTION_STATUS"
+        const val EXTRA_TYPE = "type"
+        const val EXTRA_MESSAGE = "message"
+        const val EXTRA_PING = "ping_ms"
+        const val EXTRA_SERVER_IP = "server_ip"
+        const val EXTRA_IS_ALIVE = "is_alive"
+
+        // Status tipleri
+        const val TYPE_DISCOVERY_START = "discovery_start"
+        const val TYPE_DISCOVERY_SUCCESS = "discovery_success"
+        const val TYPE_DISCOVERY_FAILED = "discovery_failed"
+        const val TYPE_PING_LOOP_START = "ping_loop_start"
+        const val TYPE_PING_UPDATE = "ping_update"
+        const val TYPE_SERVER_TIMEOUT = "server_timeout"
+        const val TYPE_CONNECTION_LOST = "connection_lost"
+
+        // Fallback IP (Emülatör için)
+        private const val FALLBACK_IP = "127.0.0.1"
     }
 
     // ===== Binder =====
@@ -33,61 +53,101 @@ class UdpService : Service() {
     }
 
     private val binder = LocalBinder()
-
-    // ===== Network state (protected by serverLock)
     private val serverLock = Any()
+
+    // UI Thread Handler (Toast için)
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     @Volatile
     private var serverIpInternal: String? = null
 
     @Volatile
-    var lastPingMs: Long = -1
+    private var _isServerAlive = false
+    val isServerAlive: Boolean get() = _isServerAlive
 
     @Volatile
-    var lastStatusText: String = "Başlatılıyor"
+    private var lastServerResponseTime: Long = 0
 
-    // single socket used for both send & receive
+    @Volatile
+    var lastPingMs: Long = -1
+
     private lateinit var socket: DatagramSocket
-
-    // Send queue
     private val sendQueue = LinkedBlockingQueue<DatagramPacket>()
 
     @Volatile
     private var running = false
 
-    // ===============================
+    // Ping istatistikleri
+    private var pingsSent = 0
+    private var pingsReceived = 0
+
+    // ===== Lifecycle =====
     override fun onCreate() {
         super.onCreate()
+
+        showToast("🚀 UDP Servisi başlatılıyor...")
+
         try {
             socket = DatagramSocket()
             socket.broadcast = true
+            socket.soTimeout = 3000
+            Log.d(TAG, "Socket oluşturuldu")
         } catch (e: Exception) {
+            showToast("❌ Socket hatası: ${e.message}")
             e.printStackTrace()
+            return
         }
 
         running = true
         startListener()
         startSender()
         startPingLoop()
+        startAliveMonitor()
+
+        // Discovery başlat
         discoverServer()
     }
 
     override fun onDestroy() {
         running = false
         try { socket.close() } catch (_: Exception) {}
+        showToast("🛑 UDP Servisi durduruldu")
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder = binder
-
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
 
-    // Public getters/setters (synchronized)
+    // ===== Toast Helper =====
+    private fun showToast(message: String) {
+        mainHandler.post {
+            Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // ===== Broadcast Helper =====
+    private fun sendStatusBroadcast(type: String, message: String = "") {
+        val intent = Intent(ACTION_STATUS).apply {
+            putExtra(EXTRA_TYPE, type)
+            putExtra(EXTRA_MESSAGE, message)
+            putExtra(EXTRA_PING, lastPingMs)
+            putExtra(EXTRA_SERVER_IP, getServerIp())
+            putExtra(EXTRA_IS_ALIVE, _isServerAlive)
+        }
+        sendBroadcast(intent)
+    }
+
+    // ===== IP Yönetimi =====
     fun setServerIp(ip: String?) {
         synchronized(serverLock) {
+            val oldIp = serverIpInternal
             serverIpInternal = ip
-            lastStatusText = if (ip == null) "Server yok, localhost" else "Server set: $ip"
-            Log.d(TAG, "setServerIp -> $serverIpInternal")
+
+            if (ip != null && ip != oldIp) {
+                _isServerAlive = false
+                lastPingMs = -1
+                Log.d(TAG, "Server IP değişti: $oldIp -> $ip")
+            }
         }
     }
 
@@ -95,192 +155,261 @@ class UdpService : Service() {
         synchronized(serverLock) { return serverIpInternal }
     }
 
-    fun isUsingLocalhost(): Boolean {
-        synchronized(serverLock) { return serverIpInternal == null }
-    }
-
-    private fun getTargetIpForPing(): String {
-        val ip = getServerIp()
-        return ip ?: "127.0.0.1"
-    }
-
-    // make discoverServer public so MainActivity can call it directly
+    // ===== Discovery =====
     fun discoverServer() {
+        showToast("🔍 Sunucu aranıyor...")
+        sendStatusBroadcast(TYPE_DISCOVERY_START, "Sunucu aranıyor...")
+
         thread(name = "udp-discover") {
+            Log.d(TAG, "Discovery başlatılıyor...")
+
             try {
-                val s = DatagramSocket()
-                s.broadcast = true
-                s.soTimeout = 2000
-                val msg = "DISCOVER_JOYSTICK_SERVER".toByteArray()
-                val packet = DatagramPacket(msg, msg.size, InetAddress.getByName("255.255.255.255"), SERVER_PORT)
-                s.send(packet)
-                lastStatusText = "Broadcast gönderildi"
-                // wait reply
+                val discoverSocket = DatagramSocket()
+                discoverSocket.broadcast = true
+                discoverSocket.soTimeout = 3000
+
+                val msg = "DISCOVER_JOYSTICK_SERVER"
+                val packet = DatagramPacket(
+                    msg.toByteArray(),
+                    msg.length,
+                    InetAddress.getByName("255.255.255.255"),
+                    SERVER_PORT
+                )
+
+                discoverSocket.send(packet)
+                Log.d(TAG, "Broadcast gönderildi")
+
                 val buf = ByteArray(256)
                 val response = DatagramPacket(buf, buf.size)
-                s.receive(response)
-                val ip = response.address.hostAddress
-                setServerIp(ip)
-                s.close()
-                Log.d(TAG, "discoverServer -> found $ip")
+                discoverSocket.receive(response)
+
+                val responseStr = String(response.data, 0, response.length)
+                if (responseStr.startsWith("I_AM_SERVER")) {
+                    val ip = response.address.hostAddress ?: FALLBACK_IP
+                    setServerIp(ip)
+
+                    showToast("✅ Sunucu bulundu: $ip")
+                    sendStatusBroadcast(TYPE_DISCOVERY_SUCCESS, ip)
+                    Log.d(TAG, "Discovery BAŞARILI: $ip")
+                } else {
+                    handleDiscoveryFailed("Geçersiz cevap")
+                }
+
+                discoverSocket.close()
+
             } catch (e: Exception) {
-                setServerIp(null)
-                Log.d(TAG, "discoverServer: no reply, fallback localhost (${e.localizedMessage})")
+                handleDiscoveryFailed(e.message ?: "Bilinmeyen hata")
             }
         }
     }
 
-    // Listener
-    private fun startListener() {
-        thread(name = "udp-listener") {
-            while (running) {
-                try {
-                    val buffer = ByteArray(512)
-                    val packet = DatagramPacket(buffer, buffer.size)
-                    socket.receive(packet)
-                    val length = packet.length
-                    if (length <= 0) continue
+    private fun handleDiscoveryFailed(reason: String) {
+        Log.d(TAG, "Discovery başarısız: $reason")
 
-                    val msg = String(packet.data, 0, length)
-                    if (msg.startsWith("I_AM_SERVER")) {
-                        // use setter
-                        setServerIp(packet.address.hostAddress)
-                        lastStatusText = "Server bulundu: ${getServerIp()}"
-                        Log.d(TAG, "I_AM_SERVER from ${getServerIp()}")
-                        continue
-                    }
+        // Fallback IP kullan
+        setServerIp(FALLBACK_IP)
 
-                    val b0 = packet.data[0]
-
-                    if (b0 == PACKET_PING) {
-                        try {
-                            var sentTime: Long? = null
-                            if (length >= 9) {
-                                var tmp = 0L
-                                for (i in 0..7) tmp = (tmp shl 8) or (packet.data[1 + i].toLong() and 0xFF)
-                                sentTime = tmp
-                            } else if (length >= 5) {
-                                var tmp = 0L
-                                for (i in 0..3) tmp = (tmp shl 8) or (packet.data[1 + i].toLong() and 0xFF)
-                                sentTime = tmp
-                            }
-                            if (sentTime != null) {
-                                val rtt = System.currentTimeMillis() - sentTime
-                                lastPingMs = rtt
-                                lastStatusText = "Ping: ${lastPingMs} ms"
-                                Log.d(TAG, "PING echo received from ( {packet.address.hostAddress} rtt= ){rtt}ms")
-                                // broadcast to UI
-                                try {
-                                    val i = Intent("com.benim.ACTION_PING")
-                                    i.putExtra("ping_ms", lastPingMs)
-                                    sendBroadcast(i)
-                                } catch (e: Exception) {
-                                    e.printStackTrace()
-                                }
-                            } else {
-                                lastStatusText = "Ping (malformed)"
-                                Log.d(TAG, "Ping malformed")
-                            }
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        }
-                        continue
-                    }
-
-                    if (b0 == PACKET_JOYSTICK) {
-                        if (length >= 5) {
-                            val buttons = packet.data[1].toInt() and 0xFF
-                            val x = packet.data[2]
-                            val y = packet.data[3]
-                            val z = packet.data[4]
-                            lastStatusText = "Joystick recv btn=0x${buttons.toString(16)}"
-                            Log.d(TAG, "JOYSTICK from ( {packet.address.hostAddress} btn=0x ){buttons.toString(16)} x=$x y=$y")
-                        }
-                        continue
-                    }
-
-                    // fallback
-                    lastStatusText = "Got ${length} bytes from ${packet.address.hostAddress}"
-                    Log.d(TAG, lastStatusText)
-
-                } catch (e: Exception) {
-                    if (running) {
-                        e.printStackTrace()
-                        lastStatusText = "Listener error: ${e.localizedMessage}"
-                        Log.d(TAG, "listener error: ${e.localizedMessage}")
-                    }
-                }
-            }
-        }
+        showToast("⚠️ Otomatik bulunamadı, $FALLBACK_IP deneniyor...")
+        sendStatusBroadcast(TYPE_DISCOVERY_FAILED, "Fallback: $FALLBACK_IP")
     }
 
-    // Sender thread
-    private fun startSender() {
-        thread(name = "udp-sender") {
-            while (running) {
-                try {
-                    val packet = sendQueue.take()
-                    socket.send(packet)
-                } catch (e: Exception) {
-                    if (running) {
-                        e.printStackTrace()
-                        lastStatusText = "Send error: ${e.localizedMessage}"
-                        Log.d(TAG, "send error: ${e.localizedMessage}")
-                    }
-                }
-            }
-        }
-    }
-
-    private fun startPingLoop() {
-        thread(name = "udp-ping") {
-            while (running) {
-                try {
-                    enqueuePing()
-                    Thread.sleep(2000) //İlerde ping paketi yanına alive eklenecek server düşerse haber verilecek
-                } catch (e: InterruptedException) {
-
-                }
-            }
-        }
-    }
-
-    private fun enqueuePing() {
-        val ip = getTargetIpForPing()
-        val time = System.currentTimeMillis()
-        val buf = ByteArray(9)
-        buf[0] = PACKET_PING
-        for (i in 0..7) {
-            buf[i + 1] = (time shr (56 - i * 8)).toByte()
-        }
-        try {
-            val packet = DatagramPacket(buf, buf.size, InetAddress.getByName(ip), SERVER_PORT)
-            sendQueue.offer(packet)
-            lastStatusText = "Ping gönderildi -> $ip"
-            Log.d(TAG, "Ping sent to $ip ts=$time")
-        } catch (e: Exception) {
-            e.printStackTrace()
-            lastStatusText = "Ping hata: ${e.localizedMessage}"
-            Log.d(TAG, "Ping enqueue error: ${e.localizedMessage}")
-        }
-    }
-
-    // Public API - Joystick (mevcut)
+    // ===== Paket Gönderimi =====
     fun sendJoystick(buttons: Byte, x: Byte, y: Byte, z: Byte) {
-        val buf = byteArrayOf(PACKET_JOYSTICK, buttons, x, y, z)
-        sendRaw(buf)
+        sendRaw(byteArrayOf(PACKET_JOYSTICK, buttons, x, y, z))
     }
 
-    // Yeni: Genel raw gönderim (mouse için de kullanılacak)
+    fun sendMouseMove(dx: Byte, dy: Byte) {
+        sendRaw(byteArrayOf(PACKET_MOUSE_MOVE, dx, dy, 0, 0))
+    }
+
+    fun sendMouseButton(button: Byte, pressed: Byte) {
+        sendRaw(byteArrayOf(PACKET_MOUSE_BUTTON, button, pressed, 0, 0))
+    }
+
+    fun sendMouseWheel(delta: Byte) {
+        sendRaw(byteArrayOf(PACKET_MOUSE_WHEEL, delta, 0, 0, 0))
+    }
+
     fun sendRaw(data: ByteArray) {
         val ip = getServerIp() ?: return
         try {
             val packet = DatagramPacket(data, data.size, InetAddress.getByName(ip), SERVER_PORT)
             sendQueue.offer(packet)
         } catch (e: Exception) {
-            e.printStackTrace()
-            lastStatusText = "SendRaw hata: ${e.localizedMessage}"
-            Log.d(TAG, "sendRaw error: ${e.localizedMessage}")
+            Log.e(TAG, "sendRaw error: ${e.message}")
         }
+    }
+
+    // ===== Listener Thread =====
+    private fun startListener() {
+        thread(name = "udp-listener") {
+            Log.d(TAG, "Listener başlatıldı")
+            val buffer = ByteArray(512)
+            val packet = DatagramPacket(buffer, buffer.size)
+
+            while (running) {
+                try {
+                    socket.receive(packet)
+                    val len = packet.length
+                    if (len <= 0) continue
+
+                    val data = packet.data
+
+                    // PING Cevabı (0x7F)
+                    if (data[0] == PACKET_PING && len >= 9) {
+                        handlePingResponse(data, packet.address.hostAddress ?: "?")
+                    }
+                    // Discovery Cevabı
+                    else {
+                        val msg = String(data, 0, len)
+                        if (msg.startsWith("I_AM_SERVER")) {
+                            val ip = packet.address.hostAddress ?: continue
+                            if (getServerIp() != ip) {
+                                setServerIp(ip)
+                                showToast("📡 Server değişti: $ip")
+                            }
+                        }
+                    }
+
+                } catch (e: Exception) {
+                    // Timeout normal, log kirliliği yapmasın
+                    if (running && e.message?.contains("timed out") != true) {
+                        Log.e(TAG, "Listener error: ${e.message}")
+                    }
+                }
+            }
+            Log.d(TAG, "Listener durduruldu")
+        }
+    }
+
+    private fun handlePingResponse(data: ByteArray, fromIp: String) {
+        try {
+            // Timestamp'ı çöz
+            var sentTime: Long = 0
+            for (i in 0..7) {
+                sentTime = (sentTime shl 8) or (data[1 + i].toLong() and 0xFF)
+            }
+
+            val rtt = System.currentTimeMillis() - sentTime
+            val wasAlive = _isServerAlive
+
+            synchronized(serverLock) {
+                lastPingMs = rtt
+                _isServerAlive = true
+                lastServerResponseTime = System.currentTimeMillis()
+                pingsReceived++
+            }
+
+            // İlk başarılı ping'de bildir
+            if (!wasAlive) {
+                showToast("🟢 Bağlantı kuruldu! Ping: ${rtt}ms")
+            }
+
+            // IP güncelle (gerekirse)
+            if (getServerIp() != fromIp) {
+                setServerIp(fromIp)
+            }
+
+            // UI güncelle
+            sendStatusBroadcast(TYPE_PING_UPDATE)
+
+            Log.d(TAG, "PING: ${rtt}ms (gönderilen: $pingsSent, alınan: $pingsReceived)")
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Ping parse error: ${e.message}")
+        }
+    }
+
+    // ===== Sender Thread =====
+    private fun startSender() {
+        thread(name = "udp-sender") {
+            Log.d(TAG, "Sender başlatıldı")
+            while (running) {
+                try {
+                    val packet = sendQueue.take()
+                    socket.send(packet)
+                } catch (e: InterruptedException) {
+                    break
+                } catch (e: Exception) {
+                    Log.e(TAG, "Send error: ${e.message}")
+                }
+            }
+            Log.d(TAG, "Sender durduruldu")
+        }
+    }
+
+    // ===== Ping Loop =====
+    private fun startPingLoop() {
+        thread(name = "udp-ping") {
+            // Biraz bekle, socket hazır olsun
+            Thread.sleep(500)
+
+            showToast("📶 Ping döngüsü başladı")
+            sendStatusBroadcast(TYPE_PING_LOOP_START)
+            Log.d(TAG, "Ping loop başlatıldı")
+
+            while (running) {
+                try {
+                    enqueuePing()
+                    Thread.sleep(1000)
+                } catch (e: InterruptedException) {
+                    break
+                }
+            }
+            Log.d(TAG, "Ping loop durduruldu")
+        }
+    }
+
+    private fun enqueuePing() {
+        val ip = getServerIp() ?: return
+
+        val time = System.currentTimeMillis()
+        val buf = ByteArray(9)
+        buf[0] = PACKET_PING
+        for (i in 0..7) {
+            buf[i + 1] = (time shr (56 - i * 8)).toByte()
+        }
+
+        try {
+            val packet = DatagramPacket(buf, buf.size, InetAddress.getByName(ip), SERVER_PORT)
+            sendQueue.offer(packet)
+            pingsSent++
+        } catch (e: Exception) {
+            Log.e(TAG, "Ping enqueue error: ${e.message}")
+        }
+    }
+
+    // ===== Alive Monitor =====
+    private fun startAliveMonitor() {
+        thread(name = "udp-alive") {
+            Log.d(TAG, "Alive monitor başlatıldı")
+
+            while (running) {
+                Thread.sleep(2000)
+
+                synchronized(serverLock) {
+                    val timeSinceResponse = System.currentTimeMillis() - lastServerResponseTime
+
+                    if (_isServerAlive && timeSinceResponse > SERVER_TIMEOUT_MS) {
+                        _isServerAlive = false
+                        lastPingMs = -1
+
+                        showToast("🔴 Bağlantı kesildi!")
+                        sendStatusBroadcast(TYPE_SERVER_TIMEOUT)
+                        Log.d(TAG, "Server TIMEOUT - ${timeSinceResponse}ms yanıt yok")
+                    }
+                }
+            }
+            Log.d(TAG, "Alive monitor durduruldu")
+        }
+    }
+
+    // ===== İstatistikler =====
+    fun getStats(): String {
+        val lossPercent = if (pingsSent > 0) {
+            ((pingsSent - pingsReceived) * 100 / pingsSent)
+        } else 0
+
+        return "Gönderilen: $pingsSent, Alınan: $pingsReceived, Kayıp: %$lossPercent"
     }
 }

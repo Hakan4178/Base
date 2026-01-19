@@ -150,21 +150,13 @@
             android:layout_height="1dp"
             android:layout_weight="1" />
 
-        <TextView
-            android:id="@+id/txtPing"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Ping: --"
-            android:textColor="#888888"
-            android:textSize="11sp" />
-
         <androidx.appcompat.widget.AppCompatButton
             android:id="@+id/btnChangeMode"
             style="@style/Widget.AppCompat.Button.Borderless.Colored"
             android:layout_width="wrap_content"
             android:layout_height="40dp"
             android:layout_marginStart="8dp"
-            android:text="🎮 Gamepad"
+            android:text="🖱️ Mouse"
             android:textSize="12sp" />
 
     </LinearLayout>
