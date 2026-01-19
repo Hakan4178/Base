@@ -7,5 +7,5 @@ chmod +x install.sh
 # 2. Çalıştırma
 python3 server.py
 
-# veya izin sorunu varsa
+veya izin sorunu varsa:
 sudo python3 server.py
