@@ -1,11 +1,19 @@
 Hala geliştiriliyor. Lütfen istediğiniz özellikleri belirtin.
 
-# 1. Kurulum
+# Kurulum
+
+git clone https://github.com/Hakan4178/base.git
+
+cd base
+
 chmod +x install.sh
+
 ./install.sh
 
-# 2. Çalıştırma
-python3 server.py
+# Kullanım
 
-veya izin sorunu varsa:
-sudo python3 server.py
+./run.sh           # Normal mod
+
+./run.sh -d        # Debug mod (tüm paketleri loglar)
+
+./run.sh -p 5000   # Farklı port
