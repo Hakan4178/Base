@@ -86,7 +86,7 @@
         app:layout_constraintTop_toBottomOf="@id/btnMenu">
 
         <!-- A, B, X, Y Butonları -->
-        <Button
+        <androidx.appcompat.widget.AppCompatButton
             android:id="@+id/btnA"
             android:layout_width="60dp"
             android:layout_height="60dp"
@@ -98,7 +98,7 @@
             android:textSize="18sp"
             android:textStyle="bold" />
 
-        <Button
+        <androidx.appcompat.widget.AppCompatButton
             android:id="@+id/btnB"
             android:layout_width="60dp"
             android:layout_height="60dp"
@@ -110,7 +110,7 @@
             android:textSize="18sp"
             android:textStyle="bold" />
 
-        <Button
+        <androidx.appcompat.widget.AppCompatButton
             android:id="@+id/btnX"
             android:layout_width="60dp"
             android:layout_height="60dp"
@@ -122,7 +122,7 @@
             android:textSize="18sp"
             android:textStyle="bold" />
 
-        <Button
+        <androidx.appcompat.widget.AppCompatButton
             android:id="@+id/btnY"
             android:layout_width="60dp"
             android:layout_height="60dp"
@@ -135,7 +135,7 @@
             android:textStyle="bold" />
 
         <!-- Shoulder butonları -->
-        <Button
+        <androidx.appcompat.widget.AppCompatButton
             android:id="@+id/btnL1"
             android:layout_width="70dp"
             android:layout_height="40dp"
@@ -146,7 +146,7 @@
             android:textColor="#FFFFFF"
             android:textSize="14sp" />
 
-        <Button
+        <androidx.appcompat.widget.AppCompatButton
             android:id="@+id/btnR1"
             android:layout_width="70dp"
             android:layout_height="40dp"
@@ -158,7 +158,7 @@
             android:textSize="14sp" />
 
         <!-- Start/Select -->
-        <Button
+        <androidx.appcompat.widget.AppCompatButton
             android:id="@+id/btnSelect"
             android:layout_width="60dp"
             android:layout_height="35dp"
@@ -169,7 +169,7 @@
             android:textColor="#AAAAAA"
             android:textSize="10sp" />
 
-        <Button
+        <androidx.appcompat.widget.AppCompatButton
             android:id="@+id/btnStart"
             android:layout_width="60dp"
             android:layout_height="35dp"
@@ -202,7 +202,7 @@
             android:paddingHorizontal="8dp"
             android:paddingVertical="4dp">
 
-            <Button
+            <androidx.appcompat.widget.AppCompatButton
                 android:id="@+id/btnEditMode"
                 style="@style/Widget.AppCompat.Button.Borderless"
                 android:layout_width="wrap_content"
@@ -211,7 +211,7 @@
                 android:textColor="#FFFFFF"
                 android:textSize="12sp" />
 
-            <Button
+            <androidx.appcompat.widget.AppCompatButton
                 android:id="@+id/btnAdd"
                 style="@style/Widget.AppCompat.Button.Borderless"
                 android:layout_width="wrap_content"
@@ -220,7 +220,7 @@
                 android:textColor="#FFFFFF"
                 android:textSize="12sp" />
 
-            <Button
+            <androidx.appcompat.widget.AppCompatButton
                 android:id="@+id/btnDiscover"
                 style="@style/Widget.AppCompat.Button.Borderless"
                 android:layout_width="wrap_content"
@@ -256,7 +256,7 @@
                 android:layout_marginStart="8dp"
                 android:background="@android:drawable/btn_dropdown" />
 
-            <Button
+            <androidx.appcompat.widget.AppCompatButton
                 android:id="@+id/btnSavePreset"
                 style="@style/Widget.AppCompat.Button.Borderless"
                 android:layout_width="wrap_content"
@@ -265,7 +265,7 @@
                 android:textColor="#FFFFFF"
                 android:textSize="12sp" />
 
-            <Button
+            <androidx.appcompat.widget.AppCompatButton
                 android:id="@+id/btnChangeMode"
                 style="@style/Widget.AppCompat.Button.Borderless.Colored"
                 android:layout_width="wrap_content"
