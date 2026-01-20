@@ -1,5 +1,12 @@
 Hala geliştiriliyor. Lütfen istediğiniz özellikleri belirtin.
 
+Eklenecek özellikler:
+-Gyro sensör desteği
+-Tam joystick desteği
+-Ui ve tema düzeltmeleri, özgür ve kişiselleştirilebilir bir tasarım
+
+
+
 # Linux tarafı için Kurulum
 
 git clone https://github.com/Hakan4178/base.git
