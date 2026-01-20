@@ -1,8 +1,11 @@
 Hala geliştiriliyor. Lütfen istediğiniz özellikleri belirtin.
 
-Eklenecek özellikler:
+# Eklenecek özellikler:
+
 -Gyro sensör desteği
+
 -Tam joystick desteği
+
 -Ui ve tema düzeltmeleri, özgür ve kişiselleştirilebilir bir tasarım
 
 
