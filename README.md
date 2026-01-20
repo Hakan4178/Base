@@ -1,6 +1,6 @@
 Hala geliştiriliyor. Lütfen istediğiniz özellikleri belirtin.
 
-# Kurulum
+# Linux tarafı için Kurulum
 
 git clone https://github.com/Hakan4178/base.git
 
@@ -17,3 +17,7 @@ chmod +x install.sh
 ./run.sh -d        # Debug mod (tüm paketleri loglar)
 
 ./run.sh -p 5000   # Farklı port
+
+Android client tarafı 
+
+Relases kısmındaki en son apk'yı indirip kurun. Aynı ağda otomatik bulur.
