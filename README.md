@@ -18,6 +18,6 @@ chmod +x install.sh
 
 ./run.sh -p 5000   # Farklı port
 
-Android client tarafı 
+# Android client tarafı için kurulum
 
 Relases kısmındaki en son apk'yı indirip kurun. Aynı ağda otomatik bulur.
