@@ -1,4 +1,4 @@
-Hala geliştiriliyor. Lütfen istediğiniz özellikleri belirtin. Laptop yanımda değil o yüzden 4-5 gún güncelleme gelmeyecek.
+Hala geliştiriliyor. Lütfen istediğiniz özellikleri belirtin. 
 
 # Eklenecek özellikler:
 
