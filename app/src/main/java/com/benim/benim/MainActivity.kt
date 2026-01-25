@@ -22,6 +22,9 @@ import org.json.JSONObject
 import java.util.*
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 
 // ═══════════════════════════════════════════════════════════════
 // DATA MODELS
@@ -149,7 +152,7 @@ class MainActivity : AppCompatActivity() {
     // LIFECYCLE METODLARI
     // ═══════════════════════════════════════════════════════════════
     override fun onCreate(savedInstanceState: Bundle?) {
-        // Tam Ekran Ayarları
+        // Tam Ekran Ayarları (Layout No Limits)
         window.setFlags(
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
@@ -165,12 +168,19 @@ class MainActivity : AppCompatActivity() {
         val layoutId = if (effectiveMode == "classic") R.layout.activity_main_classic else R.layout.activity_main_split
         setContentView(layoutId)
 
-        // Immersive Mode
-        window.decorView.systemUiVisibility = (
-                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
-                        View.SYSTEM_UI_FLAG_FULLSCREEN or
-                        View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                )
+        // --- YENİ MODERN IMMERSIVE MODE BAŞLANGIÇ ---
+
+        // 1. İçeriğin sistem barlarının arkasına (tam ekran) yayılmasını sağlar
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+
+        // 2. Controller'ı alıp gizleme ve davranış ayarlarını yapıyoruz
+        WindowCompat.getInsetsController(window, window.decorView).let { controller ->
+            // Bildirim ve Navigasyon çubuklarını gizle
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+            // Ekran kaydırılınca geçici olarak görünsünler (Sticky Behavior)
+            controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
+        // --- YENİ MODERN IMMERSIVE MODE BİTİŞ ---
 
         // Başlatma İşlemleri
         bindViews()
@@ -270,7 +280,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // CLASSIC MODE SETUP (Tam Gamepad)
+    // CLASSIC MODE (GAMEPAD)
     // ═══════════════════════════════════════════════════════════════
     private fun setupClassicMode() {
         // Layout Yükle
@@ -306,24 +316,16 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button?>(R.id.btnAdd)?.setOnClickListener { showAddButtonDialog() }
         findViewById<Button?>(R.id.btnSavePreset)?.setOnClickListener { showSavePresetDialog() }
 
-        // --- DÜZELTİLEN KISIM BAŞLANGIÇ ---
-
-        // Spinner hatası için kesin çözüm: Değişkene ata, null kontrolü yap
+        // Spinner ve Switch Ayarları (Düzeltilmiş)
         val spinner = findViewById<Spinner?>(R.id.spinnerPresets)
-        if (spinner != null) {
-            updatePresetSpinner(spinner)
-        }
+        if (spinner != null) updatePresetSpinner(spinner)
 
-        // Switch hatası için kesin çözüm: Türü açıkça belirt
-        val switchCenter = findViewById<Switch?>(R.id.switchCenterTouch)
-        switchCenter?.apply {
+        findViewById<Switch?>(R.id.switchCenterTouch)?.apply {
             isChecked = centerOnTouchEnabled
             setOnCheckedChangeListener { _, isChecked: Boolean ->
                 centerOnTouchEnabled = isChecked
             }
         }
-
-        // --- DÜZELTİLEN KISIM BİTİŞ ---
 
         // Custom Butonları Yerleştir
         joystickArea?.post { placeButtonsFromLayout(layoutsMap[currentLayoutKey]!!) }
@@ -388,7 +390,7 @@ class MainActivity : AppCompatActivity() {
 
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
-                // Center-on-touch (sadece sol stick için opsiyonel olabilir)
+                // Center-on-touch (sadece sol stick için ve ayar açıksa)
                 val cx = if (isLeft && centerOnTouchEnabled && event.action == MotionEvent.ACTION_DOWN) event.x else w / 2f
                 val cy = if (isLeft && centerOnTouchEnabled && event.action == MotionEvent.ACTION_DOWN) event.y else h / 2f
 
@@ -498,14 +500,13 @@ class MainActivity : AppCompatActivity() {
     // ═══════════════════════════════════════════════════════════════
     private fun placeButtonsFromLayout(layout: LayoutSpec) {
         val area = joystickArea ?: return
-        area.removeAllViews()
-        specViewMap.clear()
 
-        // Joystick thumb tekrar eklenmeli çünkü removeAllViews onu silebilir
-        // En iyisi custom buttonları ayrı bir container'a koymaktır ama şimdilik:
-        // XML'deki sabit elemanlar silinmez, sadece dinamik eklenenler silinir (eğer doğru yapılandırdıysan).
-        // Eğer removeAllViews hepsini siliyorsa, sabit elemanları tekrar inflate etmek gerekir.
-        // Basitlik için sadece custom buttonları yönetiyoruz.
+        // Sadece dinamik butonları temizle (isteğe bağlı)
+        // area.removeAllViews() // Dikkat: Bu sabit view'ları da silebilir!
+
+        // Daha güvenli yöntem: SpecViewMap'teki butonları sil
+        specViewMap.values.forEach { area.removeView(it) }
+        specViewMap.clear()
 
         layout.buttons.forEach { spec ->
             val btn = createDraggableButton(spec)
@@ -526,17 +527,19 @@ class MainActivity : AppCompatActivity() {
             editMode = this@MainActivity.editMode
             clickAction = { if (editMode) showEditDialog(spec) else performCustomButtonPress(spec) }
             onLongSettings = { showEditDialog(spec) }
+
             onDragEnd = { _, _ ->
-                val area = joystickArea ?: return@apply
-                spec.xPercent = (x + width/2f) / area.width
-                spec.yPercent = (y + height/2f) / area.height
-                saveLayouts()
+                // HATA BURADAYDI. Düzeltme:
+                joystickArea?.let { area ->
+                    spec.xPercent = (x + width / 2f) / area.width
+                    spec.yPercent = (y + height / 2f) / area.height
+                    saveLayouts()
+                }
             }
         }
     }
 
     private fun performCustomButtonPress(spec: ButtonSpec) {
-        // Custom button logic...
         val mask = when (spec.label.uppercase()) {
             "A" -> BTN_A; "B" -> BTN_B; "X" -> BTN_X; "Y" -> BTN_Y
             "START" -> BTN_START; "SELECT" -> BTN_SELECT; "L1" -> BTN_L1; "R1" -> BTN_R1
@@ -683,6 +686,26 @@ class MainActivity : AppCompatActivity() {
         return map
     }
 
+    private fun updatePresetSpinner(spinner: Spinner) {
+        val names = layoutsMap.keys.toList()
+        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, names)
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        spinner.adapter = adapter
+
+        val index = names.indexOf(currentLayoutKey)
+        if (index >= 0) spinner.setSelection(index)
+
+        spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                currentLayoutKey = names[position]
+                if (effectiveMode == "classic") {
+                    joystickArea?.post { placeButtonsFromLayout(layoutsMap[currentLayoutKey]!!) }
+                }
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+    }
+
     private fun dpToPx(dp: Int) = (dp * resources.displayMetrics.density).roundToInt()
 
     @Suppress("DEPRECATION")
@@ -692,30 +715,5 @@ class MainActivity : AppCompatActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
             v?.vibrate(VibrationEffect.createOneShot(15, VibrationEffect.DEFAULT_AMPLITUDE))
         else v?.vibrate(15)
-    }
-
-    private fun updatePresetSpinner(spinner: Spinner) {
-        val names = layoutsMap.keys.toList()
-        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, names)
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        spinner.adapter = adapter
-
-        // Mevcut seçimi ayarla
-        val index = names.indexOf(currentLayoutKey)
-        if (index >= 0) spinner.setSelection(index)
-
-        spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                currentLayoutKey = names[position]
-                // Sadece classic modda butonları yeniden yerleştir
-                if (effectiveMode == "classic") {
-                    joystickArea?.post {
-                        placeButtonsFromLayout(layoutsMap[currentLayoutKey]!!)
-                    }
-                }
-            }
-
-            override fun onNothingSelected(parent: AdapterView<*>?) {}
-        }
     }
 }
