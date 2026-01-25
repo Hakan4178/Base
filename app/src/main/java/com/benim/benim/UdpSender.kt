@@ -14,8 +14,17 @@ import java.net.DatagramSocket
 import java.net.InetAddress
 import java.util.concurrent.LinkedBlockingQueue
 import kotlin.concurrent.thread
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import android.content.res.Configuration
+import android.view.Surface
+import android.view.WindowManager
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
-class UdpService : Service() {
+class UdpService : Service(), SensorEventListener {
 
     companion object {
         private const val SERVER_PORT = 26760
@@ -24,8 +33,18 @@ class UdpService : Service() {
         private const val PACKET_MOUSE_MOVE: Byte = 0x02
         private const val PACKET_MOUSE_BUTTON: Byte = 0x03
         private const val PACKET_MOUSE_WHEEL: Byte = 0x04
+        private const val PACKET_GYRO: Byte = 0x0D // Yeni: Gyro paketi
         private const val TAG = "UdpService"
         private const val SERVER_TIMEOUT_MS = 5000L
+
+        // Gönderim sıklığını limitlemek için (Örn: 20ms = 50 FPS)
+        private var lastSendTime: Long = 0
+        private const val SEND_INTERVAL_MS = 20L
+
+        // Her seferinde allocate etmemek için tek bir buffer
+        private val gyroBuffer = ByteBuffer.allocate(13).apply {
+            order(ByteOrder.LITTLE_ENDIAN)
+        }
 
         // Broadcast Action'ları
         const val ACTION_STATUS = "com.benim.ACTION_STATUS"
@@ -85,6 +104,15 @@ class UdpService : Service() {
     private var pingsSent = 0
     private var pingsReceived = 0
 
+    // Gyro için: Sensör manager ve sensör (private yapmadım, her yerden erişilebilir)
+    var sensorManager: SensorManager? = null
+    var gyroSensor: Sensor? = null
+
+    // Son gyro verileri (her yerden okunabilir değişkenler, public)
+    var gyroX: Float = 0f
+    var gyroY: Float = 0f
+    var gyroZ: Float = 0f
+
     // ===== Lifecycle =====
     override fun onCreate() {
         super.onCreate()
@@ -105,6 +133,15 @@ class UdpService : Service() {
             return
         }
 
+        // Gyro init
+        sensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
+        gyroSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
+        if (gyroSensor != null) {
+            sensorManager?.registerListener(this, gyroSensor, SensorManager.SENSOR_DELAY_GAME)
+        } else {
+            Log.d(TAG, "Gyro sensörü yok")
+        }
+
         running = true
         startListener()
         startSender()
@@ -117,7 +154,11 @@ class UdpService : Service() {
 
     override fun onDestroy() {
         running = false
-        try { socket.close() } catch (_: Exception) {}
+        try {
+            socket.close()
+        } catch (_: Exception) {
+        }
+        sensorManager?.unregisterListener(this) // Gyro unregister
         showToast("🛑 UDP Servisi durduruldu")
         super.onDestroy()
     }
@@ -436,5 +477,49 @@ class UdpService : Service() {
         } else 0
 
         return "Gönderilen: $pingsSent, Alınan: $pingsReceived, Kayıp: %$lossPercent"
+    }
+
+    // ===== Gyro Listener =====
+    override fun onSensorChanged(event: SensorEvent?) {
+        val sensor = event?.sensor ?: return
+
+        if (sensor.type == Sensor.TYPE_GYROSCOPE) {
+            val currentTime = System.currentTimeMillis()
+
+            // 1. Hız Sınırlama: Çok sık paket gönderip ağı ve işlemciyi yorma
+            if (currentTime - lastSendTime < SEND_INTERVAL_MS) return
+
+            // 2. Ekran Modu Kontrolü
+            if (!isLandscape()) return
+
+            lastSendTime = currentTime
+
+            // 3. Veriyi Hazırla (Eski ByteBuffer'ı temizleyip tekrar kullanıyoruz)
+            synchronized(gyroBuffer) {
+                gyroBuffer.clear()
+                gyroBuffer.put(PACKET_GYRO)
+
+                // Hassasiyet ayarı: rad/s -> mdeg/s
+                // event.values[0] -> X, [1] -> Y, [2] -> Z
+                gyroBuffer.putFloat(event.values[0] * 1000f)
+                gyroBuffer.putFloat(event.values[1] * 1000f)
+                gyroBuffer.putFloat(event.values[2] * 1000f)
+
+                // sendRaw içinde DatagramPacket oluşturulduğu için
+                // array'in o anki kopyasını göndermek en güvenlisidir
+                sendRaw(gyroBuffer.array().copyOf())
+            }
+
+            // Log.d(TAG, "Gyro: X=${event.values[0]}") // Production'da bunu mutlaka kapat!
+        }
+    }
+
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+        // Boş
+    }
+
+    // Yatay mod helper
+    private fun isLandscape(): Boolean {
+        return resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     }
 }
