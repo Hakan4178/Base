@@ -1,6 +1,17 @@
-Hala geliştiriliyor. Lütfen istediğiniz özellikleri belirtin.
+Hala geliştiriliyor. Lütfen istediğiniz özellikleri belirtin. Laptop yanımda değil o yüzden 4-5 gún güncelleme gelmeyecek.
 
-# Kurulum
+# Eklenecek özellikler:
+
+-Gyro sensör desteği
+
+-Tam joystick desteği
+
+-Ui ve tema düzeltmeleri, özgür ve kişiselleştirilebilir bir tasarım
+
+-Kod daha modüler,test edilebilir ve gnu felsefesine uygun hale gelecek 
+
+
+# Linux tarafı için Kurulum
 
 git clone https://github.com/Hakan4178/base.git
 
@@ -17,3 +28,7 @@ chmod +x install.sh
 ./run.sh -d        # Debug mod (tüm paketleri loglar)
 
 ./run.sh -p 5000   # Farklı port
+
+# Android client tarafı için kurulum
+
+Relases kısmındaki en son apk'yı indirip kurun. Aynı ağda otomatik bulur.
