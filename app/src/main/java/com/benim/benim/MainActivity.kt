@@ -1,5 +1,6 @@
 package com.benim.benim
 
+import android.annotation.SuppressLint
 import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
@@ -220,12 +221,16 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    @SuppressLint("UnspecifiedRegisterReceiverFlag")
+
     private fun registerStatusReceiver() {
         val filter = IntentFilter(UdpService.ACTION_STATUS)
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            ContextCompat.registerReceiver(this, statusReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+            // Android 13 ve üzeri için ZORUNLU güvenlik bayrağı
+            registerReceiver(statusReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
         } else {
-            @Suppress("DEPRECATION")
+            // Eski sürümler için (Android 12 ve altı)
             registerReceiver(statusReceiver, filter)
         }
     }
