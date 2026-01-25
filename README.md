@@ -2,13 +2,13 @@ Hala geliştiriliyor. Lütfen istediğiniz özellikleri belirtin. Laptop yanımd
 
 # Eklenecek özellikler:
 
--Gyro sensör desteği
+-Gyro sensör desteği Yapılıyor buggy 
 
 -Tam joystick desteği
 
 -Ui ve tema düzeltmeleri, özgür ve kişiselleştirilebilir bir tasarım
 
--Kod daha modüler,test edilebilir ve gnu felsefesine uygun hale gelecek 
+-Kod daha modüler,test edilebilir ve gnu felsefesine uygun hale gelecek ( Mödüler kod fikri ertelendi)
 
 
 # Linux tarafı için Kurulum
