@@ -145,17 +145,19 @@
             android:textColor="#AAAAAA"
             android:textSize="11sp" />
 
-        <View
-            android:layout_width="0dp"
-            android:layout_height="1dp"
-            android:layout_weight="1" />
+        <androidx.appcompat.widget.AppCompatButton
+            android:id="@+id/op"
+            style="@style/Widget.AppCompat.Button.Borderless"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:text="Linux 🐧"
+            android:textColor="#FFD133"
+            android:textSize="13sp" />
 
         <androidx.appcompat.widget.AppCompatButton
             android:id="@+id/btnChangeMode"
-            style="@style/Widget.AppCompat.Button.Borderless.Colored"
-            android:layout_width="wrap_content"
+            android:layout_width="87dp"
             android:layout_height="40dp"
-            android:layout_marginStart="8dp"
             android:text="🖱️ Mouse"
             android:textSize="12sp" />
 

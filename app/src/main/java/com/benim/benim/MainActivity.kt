@@ -256,9 +256,9 @@ class MainActivity : AppCompatActivity() {
         txtStatus = findViewById(R.id.txtStatus)
 
         // Classic
-        joystickArea = findViewById(R.id.joystickArea)
+        //joystickArea = findViewById(R.id.joystickArea)
         rightJoystickArea = findViewById(R.id.rightJoystickArea)
-        joystickThumb = findViewById(R.id.joystickThumb)
+        //joystickThumb = findViewById(R.id.joystickThumb)
         rightJoystickThumb = findViewById(R.id.rightJoystickThumb)
 
         // Split
@@ -304,7 +304,7 @@ class MainActivity : AppCompatActivity() {
         // Buton Tanımları
         val buttons = mapOf(
             R.id.btnA to BTN_A, R.id.btnB to BTN_B, R.id.btnX to BTN_X, R.id.btnY to BTN_Y,
-            R.id.btnL1 to BTN_L1, R.id.btnR1 to BTN_R1, R.id.btnL2 to BTN_L2, R.id.btnR2 to BTN_R2,
+            R.id.btnL1 to BTN_L1, R.id.btnR1 to BTN_R1,
             R.id.btnStart to BTN_START, R.id.btnSelect to BTN_SELECT, R.id.btnHome to BTN_HOME
         )
 
@@ -336,6 +336,7 @@ class MainActivity : AppCompatActivity() {
         joystickArea?.post { placeButtonsFromLayout(layoutsMap[currentLayoutKey]!!) }
     }
 
+    @SuppressLint("ClickableViewAccessibility")
     private fun setupGamepadButton(viewId: Int, mask: Int) {
         findViewById<View?>(viewId)?.setOnTouchListener { v, ev ->
             when (ev.action) {
@@ -355,6 +356,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    @SuppressLint("ClickableViewAccessibility")
     private fun setupDpadButton(viewId: Int, dx: Int, dy: Int) {
         findViewById<View?>(viewId)?.setOnTouchListener { v, ev ->
             when (ev.action) {
@@ -366,7 +368,8 @@ class MainActivity : AppCompatActivity() {
                     sendFullGamepad()
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    dpadX = 0; dpadY = 0
+                    dpadX = 0
+                    dpadY = 0
                     v.isPressed = false
                     sendFullGamepad()
                 }
@@ -458,21 +461,30 @@ class MainActivity : AppCompatActivity() {
     // ═══════════════════════════════════════════════════════════════
     // SPLIT MODE (MOUSE)
     // ═══════════════════════════════════════════════════════════════
+    @SuppressLint("ClickableViewAccessibility") // Erişilebilirlik uyarısını susturdum
     private fun setupSplitMode() {
         touchpadArea?.setOnTouchListener { _, ev ->
             when (ev.actionMasked) {
-                MotionEvent.ACTION_DOWN -> { lastTouchX = ev.x; lastTouchY = ev.y; touchpadActive = true }
+                MotionEvent.ACTION_DOWN -> {
+                    lastTouchX = ev.x
+                    lastTouchY = ev.y
+                    touchpadActive = true
+                }
                 MotionEvent.ACTION_MOVE -> {
                     if (touchpadActive) {
                         val dx = (ev.x - lastTouchX).toInt()
                         val dy = (ev.y - lastTouchY).toInt()
+                        // Hassasiyeti biraz düşürmek için kontrol
                         if (abs(dx) > 1 || abs(dy) > 1) {
                             sendMouseMove(dx, dy)
-                            lastTouchX = ev.x; lastTouchY = ev.y
+                            lastTouchX = ev.x
+                            lastTouchY = ev.y
                         }
                     }
                 }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> touchpadActive = false
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    touchpadActive = false
+                }
             }
             true
         }
@@ -481,8 +493,13 @@ class MainActivity : AppCompatActivity() {
         mouseBtns.forEach { (view, id) ->
             view?.setOnTouchListener { _, ev ->
                 when (ev.action) {
-                    MotionEvent.ACTION_DOWN -> { sendMouseButton(id, true); if (globalHaptic) doHaptic() }
-                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> sendMouseButton(id, false)
+                    MotionEvent.ACTION_DOWN -> {
+                        sendMouseButton(id, true)
+                        if (globalHaptic) doHaptic()
+                    }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        sendMouseButton(id, false)
+                    }
                 }
                 true
             }
@@ -490,10 +507,15 @@ class MainActivity : AppCompatActivity() {
 
         findViewById<View?>(R.id.scrollIndicator)?.setOnTouchListener { _, ev ->
             when (ev.action) {
-                MotionEvent.ACTION_DOWN -> lastScrollY = ev.y
+                MotionEvent.ACTION_DOWN -> {
+                    lastScrollY = ev.y
+                }
                 MotionEvent.ACTION_MOVE -> {
                     val dy = (lastScrollY - ev.y) / 20f
-                    if (abs(dy) > 1) { sendMouseWheel(dy.toInt()); lastScrollY = ev.y }
+                    if (abs(dy) > 1) {
+                        sendMouseWheel(dy.toInt())
+                        lastScrollY = ev.y
+                    }
                 }
             }
             true

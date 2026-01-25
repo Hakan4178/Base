@@ -6,6 +6,7 @@ import android.os.Binder
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.Process // Thread önceliği için eklendi
 import android.util.Log
 import android.widget.Toast
 import java.net.DatagramPacket
@@ -61,6 +62,9 @@ class UdpService : Service() {
     @Volatile
     private var serverIpInternal: String? = null
 
+    // OPTİMİZASYON 1: Adresi önbelleğe alıyoruz (Her pakette string çevrimi yapmamak için)
+    private var serverAddressCache: InetAddress? = null
+
     @Volatile
     private var _isServerAlive = false
     val isServerAlive: Boolean get() = _isServerAlive
@@ -91,6 +95,9 @@ class UdpService : Service() {
             socket = DatagramSocket()
             socket.broadcast = true
             socket.soTimeout = 3000
+            // OPTİMİZASYON: Buffer boyutunu artır
+            socket.receiveBufferSize = 65536
+            socket.sendBufferSize = 65536
             Log.d(TAG, "Socket oluşturuldu")
         } catch (e: Exception) {
             showToast("❌ Socket hatası: ${e.message}")
@@ -142,6 +149,17 @@ class UdpService : Service() {
         synchronized(serverLock) {
             val oldIp = serverIpInternal
             serverIpInternal = ip
+
+            // Cache güncelle
+            if (ip != null) {
+                try {
+                    serverAddressCache = InetAddress.getByName(ip)
+                } catch (e: Exception) {
+                    serverAddressCache = null
+                }
+            } else {
+                serverAddressCache = null
+            }
 
             if (ip != null && ip != oldIp) {
                 _isServerAlive = false
@@ -231,9 +249,9 @@ class UdpService : Service() {
     }
 
     fun sendRaw(data: ByteArray) {
-        val ip = getServerIp() ?: return
+        val addr = serverAddressCache ?: return // Cache'den al (Çok daha hızlı)
         try {
-            val packet = DatagramPacket(data, data.size, InetAddress.getByName(ip), SERVER_PORT)
+            val packet = DatagramPacket(data, data.size, addr, SERVER_PORT)
             sendQueue.offer(packet)
         } catch (e: Exception) {
             Log.e(TAG, "sendRaw error: ${e.message}")
@@ -243,8 +261,11 @@ class UdpService : Service() {
     // ===== Listener Thread =====
     private fun startListener() {
         thread(name = "udp-listener") {
+            // OPTİMİZASYON 2: Thread önceliğini artır (Takılmaları önler)
+            Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
+
             Log.d(TAG, "Listener başlatıldı")
-            val buffer = ByteArray(512)
+            val buffer = ByteArray(1500) // MTU size
             val packet = DatagramPacket(buffer, buffer.size)
 
             while (running) {
@@ -313,7 +334,7 @@ class UdpService : Service() {
             // UI güncelle
             sendStatusBroadcast(TYPE_PING_UPDATE)
 
-            Log.d(TAG, "PING: ${rtt}ms (gönderilen: $pingsSent, alınan: $pingsReceived)")
+            // Log.d(TAG, "PING: ${rtt}ms") // Çok fazla log basmasın diye kapattım
 
         } catch (e: Exception) {
             Log.e(TAG, "Ping parse error: ${e.message}")
@@ -323,6 +344,9 @@ class UdpService : Service() {
     // ===== Sender Thread =====
     private fun startSender() {
         thread(name = "udp-sender") {
+            // OPTİMİZASYON 2: Thread önceliğini artır
+            Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
+
             Log.d(TAG, "Sender başlatıldı")
             while (running) {
                 try {
@@ -361,7 +385,8 @@ class UdpService : Service() {
     }
 
     private fun enqueuePing() {
-        val ip = getServerIp() ?: return
+        // Cache'den al (Daha hızlı)
+        val addr = serverAddressCache ?: return
 
         val time = System.currentTimeMillis()
         val buf = ByteArray(9)
@@ -371,7 +396,7 @@ class UdpService : Service() {
         }
 
         try {
-            val packet = DatagramPacket(buf, buf.size, InetAddress.getByName(ip), SERVER_PORT)
+            val packet = DatagramPacket(buf, buf.size, addr, SERVER_PORT)
             sendQueue.offer(packet)
             pingsSent++
         } catch (e: Exception) {
@@ -385,7 +410,7 @@ class UdpService : Service() {
             Log.d(TAG, "Alive monitor başlatıldı")
 
             while (running) {
-                Thread.sleep(2000)
+                Thread.sleep(1700)
 
                 synchronized(serverLock) {
                     val timeSinceResponse = System.currentTimeMillis() - lastServerResponseTime
