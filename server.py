@@ -155,6 +155,12 @@ class EvdevBackend(InputBackend):
         self.gamepad.write(self.ecodes.EV_ABS, self.ecodes.ABS_X, x)
         self.gamepad.write(self.ecodes.EV_ABS, self.ecodes.ABS_Y, y)
         self.gamepad.syn()
+
+        def gamepad_gyro(self, rx, ry, rz):
+        self.gamepad.write(self.ecodes.EV_ABS, self.ecodes.ABS_RX, rx)
+        self.gamepad.write(self.ecodes.EV_ABS, self.ecodes.ABS_RY, ry)
+        self.gamepad.write(self.ecodes.EV_ABS, self.ecodes.ABS_RZ, rz)
+        self.gamepad.syn()
     
     def close(self):
         try:
@@ -412,6 +418,39 @@ class UdpServer:
             scroll = 1 if delta > 0 else -1
         self.backend.mouse_scroll(scroll)
         self.log(f"Scroll {'↑' if delta > 0 else '↓'} ({delta})", addr[0], "MOUSE")
+
+        def handle_gyro(self, data, addr):
+        if len(data) < 13 or not self.backend:
+            return
+        
+        # Paket: 0x0D + float32 x + float32 y + float32 z (little endian)
+        try:
+            gx, gy, gz = struct.unpack('<fff', data[1:13])
+            
+            # Ham rad/s → derece/saniye
+            gx_deg = gx * (180 / 3.1415926535)
+            gy_deg = gy * (180 / 3.1415926535)
+            gz_deg = gz * (180 / 3.1415926535)
+            
+            # Ölçekleme: ±500 derece/s = ±32767 (çok hızlı dönüş için yetmesi lazım)
+            scale = 32767 / 500.0
+            
+            rx = int(gx_deg * scale)
+            ry = int(gy_deg * scale)
+            rz = int(gz_deg * scale)
+            
+            # Clamp
+            rx = max(min(rx, 32767), -32767)
+            ry = max(min(ry, 32767), -32767)
+            rz = max(min(rz, 32767), -32767)
+            
+            self.backend.gamepad_gyro(rx, ry, rz)
+            
+            if Config.LOG_PACKETS:
+                self.log(f"Gyro: {rx:6d}, {ry:6d}, {rz:6d}  (raw rad/s: {gx:.3f}, {gy:.3f}, {gz:.3f})", addr[0], "GYRO")
+                
+        except struct.error:
+            self.log("Gyro paketlerinden vergi aldılar :( ", addr[0], "ERROR")
     
     def handle_discovery(self, data, addr):
         try:
@@ -438,6 +477,7 @@ class UdpServer:
             Config.PACKET_MOUSE_MOVE: self.handle_mouse_move,
             Config.PACKET_MOUSE_BUTTON: self.handle_mouse_button,
             Config.PACKET_MOUSE_WHEEL: self.handle_mouse_wheel,
+            Config.PACKET_GYRO: self.handle_gyro,
         }
         handler = handlers.get(ptype)
         if handler:
