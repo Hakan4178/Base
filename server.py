@@ -18,7 +18,7 @@ from abc import ABC, abstractmethod
 # ═══════════════════════════════════════════════════════════════
 # VERSİYON
 # ═══════════════════════════════════════════════════════════════
-VERSION = "1.0.0"
+VERSION = "1.0.2"
 
 # ═══════════════════════════════════════════════════════════════
 # CONFIG
@@ -33,9 +33,10 @@ class Config:
     PACKET_MOUSE_MOVE = 0x02
     PACKET_MOUSE_BUTTON = 0x03
     PACKET_MOUSE_WHEEL = 0x04
+    PACKET_GYRO = 0x0D
     
-    MOUSE_SENSITIVITY = 2.0
-    SCROLL_SENSITIVITY = 3
+    MOUSE_SENSITIVITY = 1.6
+    SCROLL_SENSITIVITY = 2
     JOYSTICK_DEADZONE = 10
     JOYSTICK_AS_MOUSE = False
     
@@ -115,6 +116,10 @@ class EvdevBackend(InputBackend):
             ecodes.EV_ABS: [
                 (ecodes.ABS_X, AbsInfo(0, -127, 127, 0, 15, 0)),
                 (ecodes.ABS_Y, AbsInfo(0, -127, 127, 0, 15, 0)),
+                # ────────────── GYRO EKLEMESİ ────────────── Yemek molası backend kaldı
+                (ecodes.ABS_RX, AbsInfo(0, -32767, 32767, 0, 0, 0)),  # roll
+                (ecodes.ABS_RY, AbsInfo(0, -32767, 32767, 0, 0, 0)),  # pitch
+                (ecodes.ABS_RZ, AbsInfo(0, -32767, 32767, 0, 0, 0)),  # yaw
             ],
         }
         self.gamepad = UInput(gamepad_cap, name="Benim Virtual Gamepad")
