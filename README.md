@@ -8,7 +8,7 @@ Hala geliştiriliyor. Lütfen istediğiniz özellikleri belirtin.
 
 -Ui ve tema düzeltmeleri, özgür ve kişiselleştirilebilir bir tasarım
 
--Kod daha modüler,test edilebilir ve gnu felsefesine uygun hale gelecek ( Mödüler kod fikri ertelendi)
+-Kod daha modüler,test edilebilir ve gnu felsefesine uygun hale gelecek ( Modüler kod fikri ertelendi )
 
 
 # Linux tarafı için Kurulum
