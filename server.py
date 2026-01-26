@@ -156,7 +156,7 @@ class EvdevBackend(InputBackend):
         self.gamepad.write(self.ecodes.EV_ABS, self.ecodes.ABS_Y, y)
         self.gamepad.syn()
 
-        def gamepad_gyro(self, rx, ry, rz):
+    def gamepad_gyro(self, rx, ry, rz):
         self.gamepad.write(self.ecodes.EV_ABS, self.ecodes.ABS_RX, rx)
         self.gamepad.write(self.ecodes.EV_ABS, self.ecodes.ABS_RY, ry)
         self.gamepad.write(self.ecodes.EV_ABS, self.ecodes.ABS_RZ, rz)
