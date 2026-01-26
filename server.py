@@ -11,6 +11,7 @@ import subprocess
 import shutil
 import signal
 import threading
+import struct
 import time
 from datetime import datetime
 from abc import ABC, abstractmethod
