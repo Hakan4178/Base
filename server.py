@@ -419,7 +419,7 @@ class UdpServer:
         self.backend.mouse_scroll(scroll)
         self.log(f"Scroll {'↑' if delta > 0 else '↓'} ({delta})", addr[0], "MOUSE")
 
-        def handle_gyro(self, data, addr):
+    def handle_gyro(self, data, addr):
         if len(data) < 13 or not self.backend:
             return
         
