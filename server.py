@@ -579,8 +579,8 @@ class UdpServer:
                 self.log(f"Gyro kısa paket: {len(data)}B (beklenen: 7B)", addr[0], "WARN")
                 return
     
-     if not self.backend:
-        return
+        if not self.backend:
+            return
     
     try:
         # Android'den int16 olarak geliyor (Little-Endian)
