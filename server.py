@@ -2,6 +2,7 @@
 """
 Benim Gamepad/Mouse UDP Server
 Tek dosyada tüm sistem - Linux Wayland/X11
+12-Byte Gamepad Paketi + XOR Checksum
 """
 
 import os
@@ -19,7 +20,7 @@ from abc import ABC, abstractmethod
 # ═══════════════════════════════════════════════════════════════
 # VERSİYON
 # ═══════════════════════════════════════════════════════════════
-VERSION = "1.0.2"
+VERSION = "2.0.0"
 
 # ═══════════════════════════════════════════════════════════════
 # CONFIG
@@ -29,27 +30,52 @@ class Config:
     UDP_HOST = '0.0.0.0'
     UDP_PORT = 26760
     
+    # Paket Tipleri
     PACKET_PING = 0x7F
-    PACKET_JOYSTICK = 0x01
+    PACKET_GAMEPAD = 0x01
     PACKET_MOUSE_MOVE = 0x02
     PACKET_MOUSE_BUTTON = 0x03
     PACKET_MOUSE_WHEEL = 0x04
     PACKET_GYRO = 0x0D
     
+    # Hassasiyet
     MOUSE_SENSITIVITY = 1.6
     SCROLL_SENSITIVITY = 2
     JOYSTICK_DEADZONE = 10
+    TRIGGER_DEADZONE = 20
     JOYSTICK_AS_MOUSE = False
     
+    # ═══════════════════════════════════════════════════════════
+    # 32-BIT BUTON MAPPING
+    # ═══════════════════════════════════════════════════════════
     GAMEPAD_BUTTONS = {
-        0x01: ("A", "BTN_A"),
-        0x02: ("B", "BTN_B"),
-        0x04: ("X", "BTN_X"),
-        0x08: ("Y", "BTN_Y"),
-        0x10: ("START", "BTN_START"),
-        0x20: ("SELECT", "BTN_SELECT"),
-        0x40: ("L1", "BTN_TL"),
-        0x80: ("R1", "BTN_TR"),
+        # Ana Butonlar (Bit 0-7)
+        0x00000001: ("A", "BTN_A"),
+        0x00000002: ("B", "BTN_B"),
+        0x00000004: ("X", "BTN_X"),
+        0x00000008: ("Y", "BTN_Y"),
+        0x00000010: ("L1", "BTN_TL"),
+        0x00000020: ("R1", "BTN_TR"),
+        0x00000040: ("L2", "BTN_TL2"),      # Dijital L2
+        0x00000080: ("R2", "BTN_TR2"),      # Dijital R2
+        
+        # Sistem Butonları (Bit 8-12)
+        0x00000100: ("SELECT", "BTN_SELECT"),
+        0x00000200: ("START", "BTN_START"),
+        0x00000400: ("HOME", "BTN_MODE"),
+        0x00000800: ("L3", "BTN_THUMBL"),
+        0x00001000: ("R3", "BTN_THUMBR"),
+        
+        # D-Pad (Bit 13-16)
+        0x00002000: ("DPAD_UP", "DPAD"),
+        0x00004000: ("DPAD_DOWN", "DPAD"),
+        0x00008000: ("DPAD_LEFT", "DPAD"),
+        0x00010000: ("DPAD_RIGHT", "DPAD"),
+        
+        # Opsiyonel (Bit 17+) - Gerekirse aktif et
+        # 0x00020000: ("TOUCHPAD", "BTN_TOUCH"),
+        # 0x00040000: ("CAPTURE", "BTN_TRIGGER_HAPPY1"),
+        # 0x00080000: ("MIC", "BTN_TRIGGER_HAPPY2"),
     }
     
     BACKEND = "auto"
@@ -57,6 +83,7 @@ class Config:
     LOG_PACKETS = False
     LOG_MOUSE_MOVE = False
     LOG_RAW_BYTES = False
+    VERIFY_CHECKSUM = True  # XOR checksum doğrulama
     
     @classmethod
     def enable_debug(cls):
@@ -80,15 +107,19 @@ class InputBackend(ABC):
     @abstractmethod
     def mouse_scroll(self, delta): pass
     
-    def gamepad_buttons_update(self, buttons, prev): pass
-    def gamepad_axes(self, x, y): pass
+    def gamepad_buttons(self, buttons, prev): pass
+    def gamepad_left_stick(self, x, y): pass
+    def gamepad_right_stick(self, x, y): pass
+    def gamepad_triggers(self, l2, r2): pass
+    def gamepad_dpad(self, up, down, left, right): pass
+    def gamepad_gyro(self, rx, ry, rz): pass
     def close(self): pass
     
     def get_info(self):
         return {"name": self.name, "method": self.method, "library": self.library}
 
 # ═══════════════════════════════════════════════════════════════
-# EVDEV BACKEND
+# EVDEV BACKEND (Tam Gamepad Desteği)
 # ═══════════════════════════════════════════════════════════════
 class EvdevBackend(InputBackend):
     name = "evdev"
@@ -103,35 +134,93 @@ class EvdevBackend(InputBackend):
         if not os.path.exists("/dev/uinput"):
             raise FileNotFoundError("/dev/uinput bulunamadı")
         
+        # ─────────────────────────────────────────────────────
+        # MOUSE
+        # ─────────────────────────────────────────────────────
         mouse_cap = {
             ecodes.EV_REL: [ecodes.REL_X, ecodes.REL_Y, ecodes.REL_WHEEL],
             ecodes.EV_KEY: [ecodes.BTN_LEFT, ecodes.BTN_RIGHT, ecodes.BTN_MIDDLE],
         }
         self.mouse = UInput(mouse_cap, name="Benim Virtual Mouse")
         
+        # ─────────────────────────────────────────────────────
+        # GAMEPAD (Xbox-style layout)
+        # ─────────────────────────────────────────────────────
         gamepad_cap = {
             ecodes.EV_KEY: [
+                # Ana butonlar
                 ecodes.BTN_A, ecodes.BTN_B, ecodes.BTN_X, ecodes.BTN_Y,
-                ecodes.BTN_TL, ecodes.BTN_TR, ecodes.BTN_SELECT, ecodes.BTN_START,
+                # Shoulder
+                ecodes.BTN_TL, ecodes.BTN_TR,
+                ecodes.BTN_TL2, ecodes.BTN_TR2,
+                # Sistem
+                ecodes.BTN_SELECT, ecodes.BTN_START, ecodes.BTN_MODE,
+                # Thumbstick click
+                ecodes.BTN_THUMBL, ecodes.BTN_THUMBR,
             ],
             ecodes.EV_ABS: [
-                (ecodes.ABS_X, AbsInfo(0, -127, 127, 0, 15, 0)),
-                (ecodes.ABS_Y, AbsInfo(0, -127, 127, 0, 15, 0)),
-                # ────────────── GYRO EKLEMESİ ────────────── Yemek molası backend kaldı
-                (ecodes.ABS_RX, AbsInfo(0, -32767, 32767, 0, 0, 0)),  # roll
-                (ecodes.ABS_RY, AbsInfo(0, -32767, 32767, 0, 0, 0)),  # pitch
-                (ecodes.ABS_RZ, AbsInfo(0, -32767, 32767, 0, 0, 0)),  # yaw
+                # Sol Joystick
+                (ecodes.ABS_X, AbsInfo(0, -127, 127, 0, 10, 0)),
+                (ecodes.ABS_Y, AbsInfo(0, -127, 127, 0, 10, 0)),
+                # Sağ Joystick
+                (ecodes.ABS_RX, AbsInfo(0, -127, 127, 0, 10, 0)),
+                (ecodes.ABS_RY, AbsInfo(0, -127, 127, 0, 10, 0)),
+                # Tetikler (Analog)
+                (ecodes.ABS_Z, AbsInfo(0, 0, 255, 0, 0, 0)),   # L2
+                (ecodes.ABS_RZ, AbsInfo(0, 0, 255, 0, 0, 0)),  # R2
+                # D-Pad (HAT)
+                (ecodes.ABS_HAT0X, AbsInfo(0, -1, 1, 0, 0, 0)),
+                (ecodes.ABS_HAT0Y, AbsInfo(0, -1, 1, 0, 0, 0)),
             ],
         }
-        self.gamepad = UInput(gamepad_cap, name="Benim Virtual Gamepad")
+        self.gamepad = UInput(gamepad_cap, name="Benim Virtual Gamepad", vendor=0x045e, product=0x028e)
         
-        self.mouse_btns = {0: ecodes.BTN_LEFT, 1: ecodes.BTN_RIGHT, 2: ecodes.BTN_MIDDLE}
-        self.gpad_btns = {
-            0x01: ecodes.BTN_A, 0x02: ecodes.BTN_B, 0x04: ecodes.BTN_X, 0x08: ecodes.BTN_Y,
-            0x10: ecodes.BTN_START, 0x20: ecodes.BTN_SELECT, 0x40: ecodes.BTN_TL, 0x80: ecodes.BTN_TR,
+        # ─────────────────────────────────────────────────────
+        # GYRO (Ayrı cihaz - motion controller olarak)
+        # ─────────────────────────────────────────────────────
+        gyro_cap = {
+            ecodes.EV_ABS: [
+                (ecodes.ABS_RX, AbsInfo(0, -32767, 32767, 0, 0, 0)),
+                (ecodes.ABS_RY, AbsInfo(0, -32767, 32767, 0, 0, 0)),
+                (ecodes.ABS_RZ, AbsInfo(0, -32767, 32767, 0, 0, 0)),
+            ],
         }
-        self.library = f"python-evdev"
+        self.gyro_device = UInput(gyro_cap, name="Benim Virtual Gyro")
+        
+        # ─────────────────────────────────────────────────────
+        # MAPPING
+        # ─────────────────────────────────────────────────────
+        self.mouse_btns = {
+            0: ecodes.BTN_LEFT,
+            1: ecodes.BTN_RIGHT,
+            2: ecodes.BTN_MIDDLE
+        }
+        
+        self.gpad_btns = {
+            0x00000001: ecodes.BTN_A,
+            0x00000002: ecodes.BTN_B,
+            0x00000004: ecodes.BTN_X,
+            0x00000008: ecodes.BTN_Y,
+            0x00000010: ecodes.BTN_TL,
+            0x00000020: ecodes.BTN_TR,
+            0x00000040: ecodes.BTN_TL2,
+            0x00000080: ecodes.BTN_TR2,
+            0x00000100: ecodes.BTN_SELECT,
+            0x00000200: ecodes.BTN_START,
+            0x00000400: ecodes.BTN_MODE,
+            0x00000800: ecodes.BTN_THUMBL,
+            0x00001000: ecodes.BTN_THUMBR,
+        }
+        
+        # D-Pad bit maskeleri
+        self.DPAD_UP    = 0x00002000
+        self.DPAD_DOWN  = 0x00004000
+        self.DPAD_LEFT  = 0x00008000
+        self.DPAD_RIGHT = 0x00010000
     
+    # ─────────────────────────────────────────────────────────
+    # MOUSE
+    # ─────────────────────────────────────────────────────────
     def mouse_move(self, dx, dy):
         self.mouse.write(self.ecodes.EV_REL, self.ecodes.REL_X, dx)
         self.mouse.write(self.ecodes.EV_REL, self.ecodes.REL_Y, dy)
@@ -146,31 +235,81 @@ class EvdevBackend(InputBackend):
         self.mouse.write(self.ecodes.EV_REL, self.ecodes.REL_WHEEL, delta)
         self.mouse.syn()
     
-    def gamepad_buttons_update(self, buttons, prev):
+    # ─────────────────────────────────────────────────────────
+    # GAMEPAD BUTTONS
+    # ─────────────────────────────────────────────────────────
+    def gamepad_buttons(self, buttons, prev):
+        changed = False
+        
+        # Normal butonlar
         for mask, btn in self.gpad_btns.items():
+            curr = bool(buttons & mask)
+            old = bool(prev & mask)
+            if curr != old:
+                self.gamepad.write(self.ecodes.EV_KEY, btn, 1 if curr else 0)
+                changed = True
+        
+        # D-Pad (HAT olarak)
+        dpad_changed = False
+        for mask in [self.DPAD_UP, self.DPAD_DOWN, self.DPAD_LEFT, self.DPAD_RIGHT]:
             if bool(buttons & mask) != bool(prev & mask):
-                self.gamepad.write(self.ecodes.EV_KEY, btn, 1 if buttons & mask else 0)
-        self.gamepad.syn()
+                dpad_changed = True
+                break
+        
+        if dpad_changed:
+            up = bool(buttons & self.DPAD_UP)
+            down = bool(buttons & self.DPAD_DOWN)
+            left = bool(buttons & self.DPAD_LEFT)
+            right = bool(buttons & self.DPAD_RIGHT)
+            
+            # HAT X: -1=Left, 0=Center, 1=Right
+            hat_x = -1 if left else (1 if right else 0)
+            # HAT Y: -1=Up, 0=Center, 1=Down
+            hat_y = -1 if up else (1 if down else 0)
+            
+            self.gamepad.write(self.ecodes.EV_ABS, self.ecodes.ABS_HAT0X, hat_x)
+            self.gamepad.write(self.ecodes.EV_ABS, self.ecodes.ABS_HAT0Y, hat_y)
+            changed = True
+        
+        if changed:
+            self.gamepad.syn()
     
-    def gamepad_axes(self, x, y):
+    # ─────────────────────────────────────────────────────────
+    # GAMEPAD AXES
+    # ─────────────────────────────────────────────────────────
+    def gamepad_left_stick(self, x, y):
         self.gamepad.write(self.ecodes.EV_ABS, self.ecodes.ABS_X, x)
         self.gamepad.write(self.ecodes.EV_ABS, self.ecodes.ABS_Y, y)
         self.gamepad.syn()
-
-    def gamepad_gyro(self, rx, ry, rz):
-        self.gamepad.write(self.ecodes.EV_ABS, self.ecodes.ABS_RX, rx)
-        self.gamepad.write(self.ecodes.EV_ABS, self.ecodes.ABS_RY, ry)
-        self.gamepad.write(self.ecodes.EV_ABS, self.ecodes.ABS_RZ, rz)
+    
+    def gamepad_right_stick(self, x, y):
+        self.gamepad.write(self.ecodes.EV_ABS, self.ecodes.ABS_RX, x)
+        self.gamepad.write(self.ecodes.EV_ABS, self.ecodes.ABS_RY, y)
         self.gamepad.syn()
+    
+    def gamepad_triggers(self, l2, r2):
+        self.gamepad.write(self.ecodes.EV_ABS, self.ecodes.ABS_Z, l2)
+        self.gamepad.write(self.ecodes.EV_ABS, self.ecodes.ABS_RZ, r2)
+        self.gamepad.syn()
+    
+    # ─────────────────────────────────────────────────────────
+    # GYRO
+    # ─────────────────────────────────────────────────────────
+    def gamepad_gyro(self, rx, ry, rz):
+        self.gyro_device.write(self.ecodes.EV_ABS, self.ecodes.ABS_RX, rx)
+        self.gyro_device.write(self.ecodes.EV_ABS, self.ecodes.ABS_RY, ry)
+        self.gyro_device.write(self.ecodes.EV_ABS, self.ecodes.ABS_RZ, rz)
+        self.gyro_device.syn()
     
     def close(self):
         try:
             self.mouse.close()
             self.gamepad.close()
+            self.gyro_device.close()
         except: pass
 
 # ═══════════════════════════════════════════════════════════════
-# PYNPUT BACKEND
+# PYNPUT BACKEND (Sadece Mouse)
 # ═══════════════════════════════════════════════════════════════
 class PynputBackend(InputBackend):
     name = "pynput"
@@ -196,7 +335,7 @@ class PynputBackend(InputBackend):
         self.ctrl.scroll(0, delta)
 
 # ═══════════════════════════════════════════════════════════════
-# XDOTOOL BACKEND
+# XDOTOOL BACKEND (Sadece Mouse)
 # ═══════════════════════════════════════════════════════════════
 class XdotoolBackend(InputBackend):
     name = "xdotool"
@@ -227,7 +366,7 @@ class XdotoolBackend(InputBackend):
             self._run("click", btn)
 
 # ═══════════════════════════════════════════════════════════════
-# YDOTOOL BACKEND
+# YDOTOOL BACKEND (Wayland Mouse)
 # ═══════════════════════════════════════════════════════════════
 class YdotoolBackend(InputBackend):
     name = "ydotool"
@@ -237,7 +376,6 @@ class YdotoolBackend(InputBackend):
     def __init__(self):
         if not shutil.which("ydotool"):
             raise FileNotFoundError("ydotool bulunamadı")
-        # ydotoold kontrol
         result = subprocess.run(["pgrep", "-x", "ydotoold"], capture_output=True)
         if result.returncode != 0:
             subprocess.Popen(["sudo", "ydotoold"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -287,7 +425,14 @@ class UdpServer:
         self.sock = None
         self.prev_buttons = {}
         self.last_activity = {}
-        self.stats = {'packets': 0, 'pings': 0, 'mouse_moves': 0, 'clicks': 0, 'gamepad': 0}
+        self.stats = {
+            'packets': 0,
+            'pings': 0,
+            'mouse_moves': 0,
+            'clicks': 0,
+            'gamepad': 0,
+            'checksum_errors': 0
+        }
     
     def _get_ip(self):
         try:
@@ -320,25 +465,26 @@ class UdpServer:
             print(f"  ⚙️  Yöntem    : {info['method']}")
         
         print("─" * 62)
-        print("  🎮 Gamepad Tuşları (8 adet):")
-        buttons = list(Config.GAMEPAD_BUTTONS.items())
-        for i in range(0, len(buttons), 2):
-            left = buttons[i]
-            right = buttons[i+1] if i+1 < len(buttons) else None
-            left_str = f"     0x{left[0]:02X} = {left[1][0]:6s}"
-            right_str = f"0x{right[0]:02X} = {right[1][0]}" if right else ""
-            print(f"{left_str}    {right_str}")
-        
+        print("  📦 Paket Formatı: 12 Byte (XOR Checksum)")
+        print("     [Header][Buttons 4B][LX][LY][RX][RY][L2][R2][XOR]")
+        print("─" * 62)
+        print("  🎮 Desteklenen Butonlar (17 adet):")
+        print("     A B X Y L1 R1 L2 R2 SELECT START HOME L3 R3")
+        print("     D-PAD: UP DOWN LEFT RIGHT")
         print("─" * 62)
         print(f"  📁 Log       : {Config.LOG_FILE}")
         print(f"  🐛 Debug     : {'AÇIK' if Config.DEBUG_MODE else 'KAPALI'}")
+        print(f"  🔐 Checksum  : {'AÇIK' if Config.VERIFY_CHECKSUM else 'KAPALI'}")
         print("═" * 62)
     
     def log(self, msg, client=None, level="INFO"):
         ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
         client_str = f" [{client}]" if client else ""
-        emoji = {"INFO": "ℹ️", "OK": "✅", "WARN": "⚠️", "ERROR": "❌", 
-                 "PING": "📶", "MOUSE": "🖱️", "GAMEPAD": "🎮", "DEBUG": "🔧"}.get(level, "")
+        emoji = {
+            "INFO": "ℹ️", "OK": "✅", "WARN": "⚠️", "ERROR": "❌",
+            "PING": "📶", "MOUSE": "🖱️", "GAMEPAD": "🎮", "DEBUG": "🔧",
+            "GYRO": "🌀", "CHECKSUM": "🔐"
+        }.get(level, "")
         print(f"{ts}{client_str} {emoji} {msg}")
         try:
             with open(Config.LOG_FILE, "a") as f:
@@ -346,8 +492,21 @@ class UdpServer:
         except: pass
     
     def _signed(self, b):
+        """Unsigned byte -> Signed (-128~127)"""
         return b if b < 128 else b - 256
     
+    def _verify_checksum(self, data):
+        """XOR checksum doğrula (Byte 0-10 XOR == Byte 11)"""
+        if len(data) < 12:
+            return False
+        xor = 0
+        for i in range(11):
+            xor ^= data[i]
+        return xor == data[11]
+    
+    # ═══════════════════════════════════════════════════════════
+    # PING HANDLER
+    # ═══════════════════════════════════════════════════════════
     def handle_ping(self, data, addr):
         if len(data) >= 9:
             self.sock.sendto(data, addr)
@@ -355,42 +514,115 @@ class UdpServer:
             if Config.LOG_PACKETS:
                 self.log("Ping echo", addr[0], "PING")
     
-    def handle_joystick(self, data, addr):
-        if len(data) < 5 or not self.backend:
+    # ═══════════════════════════════════════════════════════════
+    # GAMEPAD HANDLER (12-Byte Paket)
+    # ═══════════════════════════════════════════════════════════
+    def handle_gamepad(self, data, addr):
+        """
+        12-Byte Gamepad Paketi:
+        [0]     Header (0x01)
+        [1-4]   Buttons (32-bit Little-Endian)
+        [5]     LX (-127~127)
+        [6]     LY (-127~127)
+        [7]     RX (-127~127)
+        [8]     RY (-127~127)
+        [9]     L2 (0~255)
+        [10]    R2 (0~255)
+        [11]    XOR Checksum
+        """
+        if len(data) < 12:
+            if Config.LOG_PACKETS:
+                self.log(f"Kısa paket: {len(data)} byte", addr[0], "WARN")
             return
+        
+        if not self.backend:
+            return
+        
+        # XOR Checksum doğrula
+        if Config.VERIFY_CHECKSUM:
+            if not self._verify_checksum(data):
+                self.stats['checksum_errors'] += 1
+                if Config.LOG_PACKETS:
+                    self.log("Checksum hatası!", addr[0], "CHECKSUM")
+                return
+        
         ip = addr[0]
-        buttons, raw_x, raw_y = data[1], data[2], data[3]
-        x, y = self._signed(raw_x), self._signed(raw_y)
+        
+        # Unpack (Little-Endian)
+        buttons = struct.unpack('<I', data[1:5])[0]  # 32-bit unsigned int
+        lx = self._signed(data[5])
+        ly = self._signed(data[6])
+        rx = self._signed(data[7])
+        ry = self._signed(data[8])
+        l2 = data[9]   # 0-255
+        r2 = data[10]  # 0-255
         
         if Config.LOG_RAW_BYTES:
-            self.log(f"JOY: btn=0x{buttons:02X} x={x:4d} y={y:4d}", ip, "DEBUG")
+            self.log(
+                f"RAW: btn=0x{buttons:08X} L:({lx:4d},{ly:4d}) R:({rx:4d},{ry:4d}) T:{l2:3d}/{r2:3d}",
+                ip, "DEBUG"
+            )
         
+        # ─────────────────────────────────────────────────────
+        # BUTONLAR
+        # ─────────────────────────────────────────────────────
         prev = self.prev_buttons.get(ip, 0)
         if buttons != prev:
-            self.backend.gamepad_buttons_update(buttons, prev)
+            self.backend.gamepad_buttons(buttons, prev)
             self.prev_buttons[ip] = buttons
             self.stats['gamepad'] += 1
+            
             if Config.LOG_PACKETS or buttons > 0:
                 pressed = [name for mask, (name, _) in Config.GAMEPAD_BUTTONS.items() if buttons & mask]
                 if pressed:
                     self.log(f"Tuşlar: {', '.join(pressed)}", ip, "GAMEPAD")
         
-        if abs(x) < Config.JOYSTICK_DEADZONE: x = 0
-        if abs(y) < Config.JOYSTICK_DEADZONE: y = 0
-        self.backend.gamepad_axes(x, y)
+        # ─────────────────────────────────────────────────────
+        # SOL JOYSTİCK
+        # ─────────────────────────────────────────────────────
+        if abs(lx) < Config.JOYSTICK_DEADZONE:
+            lx = 0
+        if abs(ly) < Config.JOYSTICK_DEADZONE:
+            ly = 0
         
-        if Config.JOYSTICK_AS_MOUSE and (x or y):
-            self.backend.mouse_move(int(x * Config.MOUSE_SENSITIVITY / 20),
-                                    int(y * Config.MOUSE_SENSITIVITY / 20))
+        self.backend.gamepad_left_stick(lx, ly)
+        
+        # Joystick → Mouse modu
+        if Config.JOYSTICK_AS_MOUSE and (lx or ly):
+            self.backend.mouse_move(
+                int(lx * Config.MOUSE_SENSITIVITY / 20),
+                int(ly * Config.MOUSE_SENSITIVITY / 20)
+            )
+        
+        # ─────────────────────────────────────────────────────
+        # SAĞ JOYSTİCK
+        # ─────────────────────────────────────────────────────
+        if abs(rx) < Config.JOYSTICK_DEADZONE:
+            rx = 0
+        if abs(ry) < Config.JOYSTICK_DEADZONE:
+            ry = 0
+        
+        self.backend.gamepad_right_stick(rx, ry)
+        
+        # ─────────────────────────────────────────────────────
+        # TETİKLER (Analog)
+        # ─────────────────────────────────────────────────────
+        if l2 < Config.TRIGGER_DEADZONE:
+            l2 = 0
+        if r2 < Config.TRIGGER_DEADZONE:
+            r2 = 0
+        
+        self.backend.gamepad_triggers(l2, r2)
     
+    # ═══════════════════════════════════════════════════════════
+    # MOUSE HANDLERS
+    # ═══════════════════════════════════════════════════════════
     def handle_mouse_move(self, data, addr):
         if len(data) < 3 or not self.backend:
             return
-        raw_dx, raw_dy = data[1], data[2]
-        dx, dy = self._signed(raw_dx), self._signed(raw_dy)
         
-        if Config.LOG_RAW_BYTES:
-            self.log(f"RAW: [{raw_dx:3d},{raw_dy:3d}] → [{dx:4d},{dy:4d}]", addr[0], "DEBUG")
+        dx = self._signed(data[1])
+        dy = self._signed(data[2])
         
         final_dx = int(dx * Config.MOUSE_SENSITIVITY)
         final_dy = int(dy * Config.MOUSE_SENSITIVITY)
@@ -404,55 +636,59 @@ class UdpServer:
     def handle_mouse_button(self, data, addr):
         if len(data) < 3 or not self.backend:
             return
+        
         button, pressed = data[1], data[2] == 1
         self.backend.mouse_button(button, pressed)
         self.stats['clicks'] += 1
+        
         btn_name = {0: "Sol", 1: "Sağ", 2: "Orta"}.get(button, str(button))
         self.log(f"{btn_name} tık {'▼' if pressed else '▲'}", addr[0], "MOUSE")
     
     def handle_mouse_wheel(self, data, addr):
         if len(data) < 2 or not self.backend:
             return
+        
         delta = self._signed(data[1])
         scroll = delta * Config.SCROLL_SENSITIVITY // 10
         if scroll == 0 and delta:
             scroll = 1 if delta > 0 else -1
+        
         self.backend.mouse_scroll(scroll)
         self.log(f"Scroll {'↑' if delta > 0 else '↓'} ({delta})", addr[0], "MOUSE")
-
+    
+    # ═══════════════════════════════════════════════════════════
+    # GYRO HANDLER
+    # ═══════════════════════════════════════════════════════════
     def handle_gyro(self, data, addr):
         if len(data) < 13 or not self.backend:
             return
         
-        # Paket: 0x0D + float32 x + float32 y + float32 z (little endian)
         try:
             gx, gy, gz = struct.unpack('<fff', data[1:13])
             
-            # Ham rad/s → derece/saniye
-            gx_deg = gx * (180 / 3.1415926535)
-            gy_deg = gy * (180 / 3.1415926535)
-            gz_deg = gz * (180 / 3.1415926535)
+            # rad/s * 1000 (Android'den) → derece/s
+            gx_deg = gx * (180 / 3141.5926535)
+            gy_deg = gy * (180 / 3141.5926535)
+            gz_deg = gz * (180 / 3141.5926535)
             
-            # Ölçekleme: ±500 derece/s = ±32767 (çok hızlı dönüş için yetmesi lazım)
+            # ±500 derece/s = ±32767
             scale = 32767 / 500.0
             
-            rx = int(gx_deg * scale)
-            ry = int(gy_deg * scale)
-            rz = int(gz_deg * scale)
-            
-            # Clamp
-            rx = max(min(rx, 32767), -32767)
-            ry = max(min(ry, 32767), -32767)
-            rz = max(min(rz, 32767), -32767)
+            rx = max(min(int(gx_deg * scale), 32767), -32767)
+            ry = max(min(int(gy_deg * scale), 32767), -32767)
+            rz = max(min(int(gz_deg * scale), 32767), -32767)
             
             self.backend.gamepad_gyro(rx, ry, rz)
             
             if Config.LOG_PACKETS:
-                self.log(f"Gyro: {rx:6d}, {ry:6d}, {rz:6d}  (raw rad/s: {gx:.3f}, {gy:.3f}, {gz:.3f})", addr[0], "GYRO")
+                self.log(f"Gyro: {rx:6d}, {ry:6d}, {rz:6d}", addr[0], "GYRO")
                 
         except struct.error:
-            self.log("Gyro paketlerinden vergi aldılar :( ", addr[0], "ERROR")
+            self.log("Gyro parse hatası", addr[0], "ERROR")
     
+    # ═══════════════════════════════════════════════════════════
+    # DISCOVERY HANDLER
+    # ═══════════════════════════════════════════════════════════
     def handle_discovery(self, data, addr):
         try:
             if b"DISCOVER" in data:
@@ -460,6 +696,9 @@ class UdpServer:
                 self.log("Discovery yanıtı gönderildi", addr[0], "OK")
         except: pass
     
+    # ═══════════════════════════════════════════════════════════
+    # PACKET ROUTER
+    # ═══════════════════════════════════════════════════════════
     def process_packet(self, data, addr):
         self.last_activity[addr[0]] = time.time()
         self.stats['packets'] += 1
@@ -472,25 +711,28 @@ class UdpServer:
             return
         
         ptype = data[0]
+        
         handlers = {
             Config.PACKET_PING: self.handle_ping,
-            Config.PACKET_JOYSTICK: self.handle_joystick,
+            Config.PACKET_GAMEPAD: self.handle_gamepad,
             Config.PACKET_MOUSE_MOVE: self.handle_mouse_move,
             Config.PACKET_MOUSE_BUTTON: self.handle_mouse_button,
             Config.PACKET_MOUSE_WHEEL: self.handle_mouse_wheel,
             Config.PACKET_GYRO: self.handle_gyro,
         }
+        
         handler = handlers.get(ptype)
         if handler:
             handler(data, addr)
         elif Config.LOG_PACKETS:
-            self.log(f"Bilinmeyen: 0x{ptype:02X}", addr[0], "WARN")
+            self.log(f"Bilinmeyen paket: 0x{ptype:02X}", addr[0], "WARN")
     
+    # ═══════════════════════════════════════════════════════════
+    # SERVER LIFECYCLE
+    # ═══════════════════════════════════════════════════════════
     def start(self):
-        """Sunucuyu başlat"""
         self.running = True
         
-        # Backend
         print("\n🔧 Input backend başlatılıyor...")
         try:
             self.backend = create_backend(Config.BACKEND)
@@ -502,7 +744,6 @@ class UdpServer:
         
         self._print_banner()
         
-        # Socket
         try:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -519,10 +760,8 @@ class UdpServer:
         self.log("Durdurmak için: Ctrl+C")
         print("─" * 62)
         
-        # Cleanup thread
         threading.Thread(target=self._cleanup_loop, daemon=True).start()
         
-        # Ana döngü
         while self.running:
             try:
                 data, addr = self.sock.recvfrom(1024)
@@ -538,7 +777,6 @@ class UdpServer:
         self.stop()
     
     def stop(self):
-        """Sunucuyu durdur"""
         self.running = False
         if self.backend:
             self.backend.close()
@@ -552,14 +790,15 @@ class UdpServer:
         self.log("Sunucu durduruldu", level="OK")
         print()
         print("📊 İstatistikler:")
-        print(f"   Paket: {self.stats['packets']:,}")
-        print(f"   Ping:  {self.stats['pings']:,}")
-        print(f"   Mouse: {self.stats['mouse_moves']:,} hareket, {self.stats['clicks']:,} tık")
-        print(f"   Gamepad: {self.stats['gamepad']:,} buton")
+        print(f"   Toplam Paket   : {self.stats['packets']:,}")
+        print(f"   Ping           : {self.stats['pings']:,}")
+        print(f"   Mouse Hareket  : {self.stats['mouse_moves']:,}")
+        print(f"   Mouse Tık      : {self.stats['clicks']:,}")
+        print(f"   Gamepad Buton  : {self.stats['gamepad']:,}")
+        print(f"   Checksum Hata  : {self.stats['checksum_errors']:,}")
         print("─" * 62)
     
     def _cleanup_loop(self):
-        """Eski bağlantıları temizle"""
         while self.running:
             time.sleep(30)
             now = time.time()
@@ -576,25 +815,33 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(
-        description="🎮 Benim Gamepad/Mouse Server",
+        description="🎮 Benim Gamepad/Mouse Server v" + VERSION,
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
+Paket Formatı (12 Byte):
+  [Header 1B][Buttons 4B][LX][LY][RX][RY][L2][R2][XOR]
+
 Örnekler:
   ./run.sh              Normal başlat
   ./run.sh -d           Debug modu
   ./run.sh -p 5000      Farklı port
-  ./run.sh -b ydotool   Belirli backend
+  ./run.sh -b evdev     Evdev backend
+  ./run.sh --no-checksum  Checksum kontrolünü kapat
         """
     )
     parser.add_argument("-p", "--port", type=int, default=26760, help="UDP port")
     parser.add_argument("-d", "--debug", action="store_true", help="Debug modu")
     parser.add_argument("-b", "--backend", choices=["auto", "evdev", "pynput", "xdotool", "ydotool"],
                        default="auto", help="Input backend")
+    parser.add_argument("--no-checksum", action="store_true", help="XOR checksum doğrulamayı kapat")
     parser.add_argument("-v", "--version", action="version", version=f"v{VERSION}")
     args = parser.parse_args()
     
     if args.debug:
         Config.enable_debug()
+    
+    if args.no_checksum:
+        Config.VERIFY_CHECKSUM = False
     
     Config.BACKEND = args.backend
     
