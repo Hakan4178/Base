@@ -563,52 +563,39 @@ class UdpServer:
         self.backend.mouse_scroll(scroll)
         self.log(f"Scroll {'↑' if delta > 0 else '↓'} ({delta})", addr[0], "MOUSE")
     
-    def handle_gyro(self, data, addr):
-        """
-        Gyro Paketi: 13 byte
-        [0]    = 0x0D (Header)
-        [1-4]  = float gX (mrad/s, Little-Endian)
-        [5-8]  = float gY
-        [9-12] = float gZ
-        """
-        if len(data) < 13:
-            if Config.LOG_GYRO:
-                self.log(f"Gyro kısa paket: {len(data)}B", addr[0], "WARN")
-            return
+ def handle_gyro(self, data, addr):
+    """
+    Gyro Paketi: 7 byte (Android int16 formatı)
+    [0]    = 0x0D (Header)
+    [1-2]  = gX (int16, Little-Endian, ±32767)
+    [3-4]  = gY (int16)
+    [5-6]  = gZ (int16)
+    
+    Değer aralığı: ±500 deg/s = ±32767
+    """
+    if len(data) < 7:
+        if Config.LOG_GYRO:
+            self.log(f"Gyro kısa paket: {len(data)}B (beklenen: 7B)", addr[0], "WARN")
+        return
+    
+    if not self.backend:
+        return
+    
+    try:
+        # Android'den int16 olarak geliyor (Little-Endian)
+        gx, gy, gz = struct.unpack('<hhh', data[1:7])
         
-        if not self.backend:
-            return
+        # Değerler zaten ±32767 aralığında, direkt kullan
+        self.backend.gamepad_gyro(gx, gy, gz)
+        self.stats['gyro'] += 1
         
-        try:
-            # Android'den mrad/s olarak geliyor (rad/s * 1000)
-            gx, gy, gz = struct.unpack('<fff', data[1:13])
+        if Config.LOG_GYRO:
+            self.log(f"Gyro: X={gx:6d} Y={gy:6d} Z={gz:6d}", addr[0], "GYRO")
             
-            # mrad/s → deg/s: değer / 1000 * (180/π)
-            # Veya: değer * 0.0572957795
-            DEG_SCALE = 180.0 / 3141.5926535  # ≈ 0.0573
-            
-            gx_deg = gx * DEG_SCALE
-            gy_deg = gy * DEG_SCALE
-            gz_deg = gz * DEG_SCALE
-            
-            # ±500 deg/s = ±32767
-            AXIS_SCALE = 32767.0 / 500.0  # ≈ 65.534
-            
-            rx = int(max(min(gx_deg * AXIS_SCALE, 32767), -32767))
-            ry = int(max(min(gy_deg * AXIS_SCALE, 32767), -32767))
-            rz = int(max(min(gz_deg * AXIS_SCALE, 32767), -32767))
-            
-            self.backend.gamepad_gyro(rx, ry, rz)
-            self.stats['gyro'] += 1
-            
-            # Her zaman logla (debug modda)
-            if Config.LOG_GYRO:
-                self.log(f"Gyro: X={rx:6d} Y={ry:6d} Z={rz:6d} (raw: {gx:.1f}, {gy:.1f}, {gz:.1f})", addr[0], "GYRO")
-                
-        except struct.error as e:
-            self.log(f"Gyro parse hatası: {e}", addr[0], "ERROR")
-        except Exception as e:
-            self.log(f"Gyro hata: {e}", addr[0], "ERROR")
+    except struct.error as e:
+        self.log(f"Gyro parse hatası: {e}", addr[0], "ERROR")
+    except Exception as e:
+        self.log(f"Gyro hata: {e}", addr[0], "ERROR")
     
     def handle_discovery(self, data, addr):
         try:
