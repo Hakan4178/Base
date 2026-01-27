@@ -564,7 +564,7 @@ class UdpServer:
         self.backend.mouse_scroll(scroll)
         self.log(f"Scroll {'↑' if delta > 0 else '↓'} ({delta})", addr[0], "MOUSE")
 
-"""
+    """
     Gyro Paketi: 7 byte (Android int16 formatı)
     [0]    = 0x0D (Header)
     [1-2]  = gX (int16, Little-Endian, ±32767)
@@ -573,9 +573,8 @@ class UdpServer:
     
     Değer aralığı: ±500 deg/s = ±32767
     """
-
- def handle_gyro(self, data, addr):
-     if len(data) < 7:
+    def handle_gyro(self, data, addr):
+        if len(data) < 7:
         if Config.LOG_GYRO:
             self.log(f"Gyro kısa paket: {len(data)}B (beklenen: 7B)", addr[0], "WARN")
         return
