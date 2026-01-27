@@ -564,39 +564,36 @@ class UdpServer:
         self.backend.mouse_scroll(scroll)
         self.log(f"Scroll {'↑' if delta > 0 else '↓'} ({delta})", addr[0], "MOUSE")
 
-    """
-    Gyro Paketi: 7 byte (Android int16 formatı)
-    [0]    = 0x0D (Header)
-    [1-2]  = gX (int16, Little-Endian, ±32767)
-    [3-4]  = gY (int16)
-    [5-6]  = gZ (int16)
-    
-    Değer aralığı: ±500 deg/s = ±32767
-    """
-    def handle_gyro(self, data, addr):
+        def handle_gyro(self, data, addr):
+        """
+        Gyro Paketi: 7 byte (Android int16 formatı)
+        [0]    = 0x0D (Header)
+        [1-2]  = gX (int16, Little-Endian, ±32767)
+        [3-4]  = gY (int16)
+        [5-6]  = gZ (int16)
+        
+        Değer aralığı: ±500 deg/s = ±32767
+        """
         if len(data) < 7:
             if Config.LOG_GYRO:
                 self.log(f"Gyro kısa paket: {len(data)}B (beklenen: 7B)", addr[0], "WARN")
-                return
-    
+            return
+        
         if not self.backend:
             return
-    
-    try:
-        # Android'den int16 olarak geliyor (Little-Endian)
-        gx, gy, gz = struct.unpack('<hhh', data[1:7])
         
-        # Değerler zaten ±32767 aralığında, direkt kullan
-        self.backend.gamepad_gyro(gx, gy, gz)
-        self.stats['gyro'] += 1
-        
-        if Config.LOG_GYRO:
-            self.log(f"Gyro: X={gx:6d} Y={gy:6d} Z={gz:6d}", addr[0], "GYRO")
+        try:
+            gx, gy, gz = struct.unpack('<hhh', data[1:7])
+            self.backend.gamepad_gyro(gx, gy, gz)
+            self.stats['gyro'] += 1
             
-    except struct.error as e:
-        self.log(f"Gyro parse hatası: {e}", addr[0], "ERROR")
-    except Exception as e:
-        self.log(f"Gyro hata: {e}", addr[0], "ERROR")
+            if Config.LOG_GYRO:
+                self.log(f"Gyro: X={gx:6d} Y={gy:6d} Z={gz:6d}", addr[0], "GYRO")
+                
+        except struct.error as e:
+            self.log(f"Gyro parse hatası: {e}", addr[0], "ERROR")
+        except Exception as e:
+            self.log(f"Gyro hata: {e}", addr[0], "ERROR")
     
     def handle_discovery(self, data, addr):
         try:
