@@ -549,7 +549,8 @@ class UdpServer:
         self.stats['clicks'] += 1
         
         btn_name = {0: "Sol", 1: "Sağ", 2: "Orta"}.get(button, str(button))
-        self.log(f"{btn_name} {'▼' if pressed else '▲'}", addr[0], "MOUSE")
+        self.log(f"{btn_name} {'▼' 
+        if pressed else '▲'}", addr[0], "MOUSE")
     
     def handle_mouse_wheel(self, data, addr):
         if len(data) < 2 or not self.backend:
