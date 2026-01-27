@@ -564,7 +564,7 @@ class UdpServer:
         self.backend.mouse_scroll(scroll)
         self.log(f"Scroll {'↑' if delta > 0 else '↓'} ({delta})", addr[0], "MOUSE")
 
-        def handle_gyro(self, data, addr):
+    def handle_gyro(self, data, addr):
         """
         Gyro Paketi: 7 byte (Android int16 formatı)
         [0]    = 0x0D (Header)
