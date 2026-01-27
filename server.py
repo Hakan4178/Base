@@ -576,7 +576,7 @@ class UdpServer:
     def handle_gyro(self, data, addr):
         if len(data) < 7:
             if Config.LOG_GYRO:
-            self.log(f"Gyro kısa paket: {len(data)}B (beklenen: 7B)", addr[0], "WARN")
+                self.log(f"Gyro kısa paket: {len(data)}B (beklenen: 7B)", addr[0], "WARN")
                 return
     
      if not self.backend:
