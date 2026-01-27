@@ -20,7 +20,7 @@ from abc import ABC, abstractmethod
 # ═══════════════════════════════════════════════════════════════
 # VERSİYON
 # ═══════════════════════════════════════════════════════════════
-VERSION = "2.0.1"
+VERSION = "1.1.7"
 
 # ═══════════════════════════════════════════════════════════════
 # CONFIG
@@ -129,14 +129,16 @@ class EvdevBackend(InputBackend):
         if not os.path.exists("/dev/uinput"):
             raise FileNotFoundError("/dev/uinput bulunamadı")
         
-        # MOUSE
+        # MOUSE (değişiklik yok)
         mouse_cap = {
             ecodes.EV_REL: [ecodes.REL_X, ecodes.REL_Y, ecodes.REL_WHEEL],
             ecodes.EV_KEY: [ecodes.BTN_LEFT, ecodes.BTN_RIGHT, ecodes.BTN_MIDDLE],
         }
         self.mouse = UInput(mouse_cap, name="Benim Virtual Mouse")
         
-        # GAMEPAD
+        # ═══════════════════════════════════════════════════════════
+        # GAMEPAD - DÜZELTİLMİŞ EKSEN ARALIKLARI
+        # ═══════════════════════════════════════════════════════════
         gamepad_cap = {
             ecodes.EV_KEY: [
                 ecodes.BTN_A, ecodes.BTN_B, ecodes.BTN_X, ecodes.BTN_Y,
@@ -145,27 +147,31 @@ class EvdevBackend(InputBackend):
                 ecodes.BTN_THUMBL, ecodes.BTN_THUMBR,
             ],
             ecodes.EV_ABS: [
-                (ecodes.ABS_X, AbsInfo(0, -127, 127, 0, 10, 0)),
-                (ecodes.ABS_Y, AbsInfo(0, -127, 127, 0, 10, 0)),
-                (ecodes.ABS_RX, AbsInfo(0, -127, 127, 0, 10, 0)),
-                (ecodes.ABS_RY, AbsInfo(0, -127, 127, 0, 10, 0)),
-                (ecodes.ABS_Z, AbsInfo(0, 0, 255, 0, 0, 0)),
-                (ecodes.ABS_RZ, AbsInfo(0, 0, 255, 0, 0, 0)),
+                # Joystick: -32767 ile +32767 (standart Xbox aralığı)
+                (ecodes.ABS_X,  AbsInfo(0, -32767, 32767, 16, 128, 0)),  # Left X
+                (ecodes.ABS_Y,  AbsInfo(0, -32767, 32767, 16, 128, 0)),  # Left Y
+                (ecodes.ABS_RX, AbsInfo(0, -32767, 32767, 16, 128, 0)),  # Right X
+                (ecodes.ABS_RY, AbsInfo(0, -32767, 32767, 16, 128, 0)),  # Right Y
+                
+                # Tetikler: 0-255
+                (ecodes.ABS_Z,  AbsInfo(0, 0, 255, 0, 0, 0)),   # L2
+                (ecodes.ABS_RZ, AbsInfo(0, 0, 255, 0, 0, 0)),   # R2
+                
+                # D-Pad: -1, 0, +1
                 (ecodes.ABS_HAT0X, AbsInfo(0, -1, 1, 0, 0, 0)),
                 (ecodes.ABS_HAT0Y, AbsInfo(0, -1, 1, 0, 0, 0)),
             ],
         }
-        self.gamepad = UInput(gamepad_cap, name="Benim Virtual Gamepad", vendor=0x045e, product=0x028e)
+        self.gamepad = UInput(
+            gamepad_cap, 
+            name="Benim Virtual Gamepad",
+            vendor=0x045e,   # Microsoft
+            product=0x028e,  # Xbox 360 Controller
+            version=0x0110
+        )
         
-        # GYRO (Ayrı cihaz)
-        gyro_cap = {
-            ecodes.EV_ABS: [
-                (ecodes.ABS_RX, AbsInfo(0, -32767, 32767, 0, 0, 0)),
-                (ecodes.ABS_RY, AbsInfo(0, -32767, 32767, 0, 0, 0)),
-                (ecodes.ABS_RZ, AbsInfo(0, -32767, 32767, 0, 0, 0)),
-            ],
-        }
-        self.gyro_device = UInput(gyro_cap, name="Benim Virtual Gyro")
+        # GYRO - Ayrı cihaz olarak KALDIR, gamepad'e ekle
+        # (Oyunlar ayrı gyro cihazını tanımıyor)
         
         # Mapping
         self.mouse_btns = {0: ecodes.BTN_LEFT, 1: ecodes.BTN_RIGHT, 2: ecodes.BTN_MIDDLE}
@@ -189,6 +195,31 @@ class EvdevBackend(InputBackend):
         self.DPAD_DOWN  = 0x00004000
         self.DPAD_LEFT  = 0x00008000
         self.DPAD_RIGHT = 0x00010000
+    
+    # ═══════════════════════════════════════════════════════════
+    # JOYSTICK - ÖLÇEKLEME EKLENDİ
+    # ═══════════════════════════════════════════════════════════
+    
+    def gamepad_left_stick(self, x, y):
+        # -127..+127 → -32767..+32767
+        scaled_x = int(x * 258)  # 32767 / 127 ≈ 258
+        scaled_y = int(y * 258)
+        
+        self.gamepad.write(self.ecodes.EV_ABS, self.ecodes.ABS_X, scaled_x)
+        self.gamepad.write(self.ecodes.EV_ABS, self.ecodes.ABS_Y, scaled_y)
+        self.gamepad.syn()
+    
+    def gamepad_right_stick(self, x, y):
+        scaled_x = int(x * 258)
+        scaled_y = int(y * 258)
+        
+        self.gamepad.write(self.ecodes.EV_ABS, self.ecodes.ABS_RX, scaled_x)
+        self.gamepad.write(self.ecodes.EV_ABS, self.ecodes.ABS_RY, scaled_y)
+        self.gamepad.syn()
+    
+    # ═══════════════════════════════════════════════════════════
+    # DİĞER METODLAR (değişiklik yok)
+    # ═══════════════════════════════════════════════════════════
     
     def mouse_move(self, dx, dy):
         self.mouse.write(self.ecodes.EV_REL, self.ecodes.REL_X, dx)
@@ -237,32 +268,20 @@ class EvdevBackend(InputBackend):
         if changed:
             self.gamepad.syn()
     
-    def gamepad_left_stick(self, x, y):
-        self.gamepad.write(self.ecodes.EV_ABS, self.ecodes.ABS_X, x)
-        self.gamepad.write(self.ecodes.EV_ABS, self.ecodes.ABS_Y, y)
-        self.gamepad.syn()
-    
-    def gamepad_right_stick(self, x, y):
-        self.gamepad.write(self.ecodes.EV_ABS, self.ecodes.ABS_RX, x)
-        self.gamepad.write(self.ecodes.EV_ABS, self.ecodes.ABS_RY, y)
-        self.gamepad.syn()
-    
     def gamepad_triggers(self, l2, r2):
         self.gamepad.write(self.ecodes.EV_ABS, self.ecodes.ABS_Z, l2)
         self.gamepad.write(self.ecodes.EV_ABS, self.ecodes.ABS_RZ, r2)
         self.gamepad.syn()
     
     def gamepad_gyro(self, rx, ry, rz):
-        self.gyro_device.write(self.ecodes.EV_ABS, self.ecodes.ABS_RX, rx)
-        self.gyro_device.write(self.ecodes.EV_ABS, self.ecodes.ABS_RY, ry)
-        self.gyro_device.write(self.ecodes.EV_ABS, self.ecodes.ABS_RZ, rz)
-        self.gyro_device.syn()
+        # Gyro'yu şimdilik devre dışı bırak
+        # Oyunlar ayrı gyro cihazını desteklemiyor
+        pass
     
     def close(self):
         try:
             self.mouse.close()
             self.gamepad.close()
-            self.gyro_device.close()
         except: pass
 
 # ═══════════════════════════════════════════════════════════════
