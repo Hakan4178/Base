@@ -1,4 +1,4 @@
-Hala geliştiriliyor. Lütfen istediğiniz özellikleri belirtin. 
+Hala geliştiriliyor. Lütfen istediğiniz özellikleri belirtin. Lüften hataları belirtin.
 
 # Eklenecek özellikler:
 
