@@ -2,9 +2,13 @@ Hala geliştiriliyor. Lütfen istediğiniz özellikleri belirtin.
 
 # Eklenecek özellikler:
 
--Gyro sensör desteği Yapılıyor buggy 
+-Gyro sensör desteği Yapılıyor buggy eklendi oyunlar tam desteklemiyor düzenleniyor
 
--Tam joystick desteği
+-Server side ham veri işleme ve ölçeklendirme eklendi(Bazen sapıtıyor) 
+
+-İvvmeölçer desteği için altyapı ve yumuşatma altyapısı deneniyor 
+
+-Tam joystick desteği Xbox ui için compose geçiliyor 
 
 -Ui ve tema düzeltmeleri, özgür ve kişiselleştirilebilir bir tasarım
 
