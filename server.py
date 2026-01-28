@@ -138,26 +138,31 @@ class EvdevBackend(InputBackend):
         
         # GAMEPAD - STANDART XBOX ARALIKLARI
         gamepad_cap = {
-            ecodes.EV_KEY: [
-                ecodes.BTN_A, ecodes.BTN_B, ecodes.BTN_X, ecodes.BTN_Y,
-                ecodes.BTN_TL, ecodes.BTN_TR, ecodes.BTN_TL2, ecodes.BTN_TR2,
-                ecodes.BTN_SELECT, ecodes.BTN_START, ecodes.BTN_MODE,
-                ecodes.BTN_THUMBL, ecodes.BTN_THUMBR,
-            ],
-            ecodes.EV_ABS: [
-                # Joystick: -32767 ~ +32767
-                (ecodes.ABS_X,  AbsInfo(0, -32767, 32767, 16, 128, 0)),
-                (ecodes.ABS_Y,  AbsInfo(0, -32767, 32767, 16, 128, 0)),
-                (ecodes.ABS_RX, AbsInfo(0, -32767, 32767, 16, 128, 0)),
-                (ecodes.ABS_RY, AbsInfo(0, -32767, 32767, 16, 128, 0)),
-                # Tetikler: 0 ~ 255
-                (ecodes.ABS_Z,  AbsInfo(0, 0, 255, 0, 0, 0)),
-                (ecodes.ABS_RZ, AbsInfo(0, 0, 255, 0, 0, 0)),
-                # D-Pad: -1, 0, +1
-                (ecodes.ABS_HAT0X, AbsInfo(0, -1, 1, 0, 0, 0)),
-                (ecodes.ABS_HAT0Y, AbsInfo(0, -1, 1, 0, 0, 0)),
-            ],
-        }
+    ecodes.EV_KEY: [
+        ecodes.BTN_A, ecodes.BTN_B, ecodes.BTN_X, ecodes.BTN_Y,
+        ecodes.BTN_TL, ecodes.BTN_TR, ecodes.BTN_TL2, ecodes.BTN_TR2,
+        ecodes.BTN_SELECT, ecodes.BTN_START, ecodes.BTN_MODE,
+        ecodes.BTN_THUMBL, ecodes.BTN_THUMBR,
+    ],
+    ecodes.EV_ABS: [
+        # Sol joystick (ana steering + gaz) - standart Xbox aralığı
+        (ecodes.ABS_X, AbsInfo(0, -32767, 32767, 16, 128, 0)),   # Sol X (steering)
+        (ecodes.ABS_Y, AbsInfo(0, -32767, 32767, 16, 128, 0)),   # Sol Y (gaz/fren)
+
+        # Sağ joystick (kamera / aim) - ayrı eksenler
+        (ecodes.ABS_Z, AbsInfo(0, -32767, 32767, 16, 128, 0)),   # Sağ X (ABS_Z genellikle sağ stick X)
+        (ecodes.ABS_RZ, AbsInfo(0, -32767, 32767, 16, 128, 0)),  # Sağ Y (ABS_RZ sağ stick Y)
+
+        # Gyro / Motion (ayrı tutmak için RX/RY/RZ)
+        (ecodes.ABS_RX, AbsInfo(0, -32767, 32767, 16, 128, 0)),  # Gyro roll
+        (ecodes.ABS_RY, AbsInfo(0, -32767, 32767, 16, 128, 0)),  # Gyro pitch
+        (ecodes.ABS_RZ, AbsInfo(0, -32767, 32767, 16, 128, 0)),  # Gyro yaw (eğer gyro ayrıysa burayı kaldırabilirsin)
+
+        # D-Pad (eğer varsa)
+        (ecodes.ABS_HAT0X, AbsInfo(0, -1, 1, 0, 0, 0)),
+        (ecodes.ABS_HAT0Y, AbsInfo(0, -1, 1, 0, 0, 0)),
+         ],
+       }
         self.gamepad = UInput(
             gamepad_cap, 
             name="Benim Virtual Gamepad",
@@ -251,11 +256,8 @@ class EvdevBackend(InputBackend):
         # ═══════════════════════════════════════════════════════
         # ÖLÇEKLEME: -127~+127 → -32767~+32767
         # ═══════════════════════════════════════════════════════
-        scaled_x = x * 258
-        scaled_y = y * 258
-        
-        self.gamepad.write(self.ecodes.EV_ABS, self.ecodes.ABS_RX, scaled_x)
-        self.gamepad.write(self.ecodes.EV_ABS, self.ecodes.ABS_RY, scaled_y)
+        self.gamepad.write(self.ecodes.EV_ABS, self.ecodes.ABS_Z, x)
+        self.gamepad.write(self.ecodes.EV_ABS, self.ecodes.ABS_RZ, y)
         self.gamepad.syn()
     
     def gamepad_triggers(self, l2, r2):
