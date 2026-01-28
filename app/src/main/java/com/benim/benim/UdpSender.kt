@@ -98,7 +98,7 @@ class UdpService : Service(), SensorEventListener {
     // NETWORK
     // ═══════════════════════════════════════════════════════════════
     private lateinit var socket: DatagramSocket
-    private val sendQueue = LinkedBlockingQueue<ByteArray>()
+    private val sendQueue = LinkedBlockingQueue<ByteArray>(1000)
     private val serverLock = Any()
 
     @Volatile private var serverIpInternal: String? = null

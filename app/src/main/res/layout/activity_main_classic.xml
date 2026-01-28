@@ -2,6 +2,7 @@
 <androidx.constraintlayout.widget.ConstraintLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -255,24 +256,14 @@
 
     <FrameLayout
         android:id="@+id/abxyContainer"
-        android:layout_width="130dp"
-        android:layout_height="130dp"
-        android:layout_marginEnd="140dp"
+        android:layout_width="518dp"
+        android:layout_height="104dp"
+        android:layout_marginEnd="184dp"
         android:layout_marginBottom="4dp"
         app:layout_constraintBottom_toTopOf="@id/rightJoystickArea"
         app:layout_constraintEnd_toEndOf="parent">
 
         <!-- Y - Üst -->
-        <androidx.appcompat.widget.AppCompatButton
-            android:id="@+id/btnY"
-            android:layout_width="50dp"
-            android:layout_height="50dp"
-            android:layout_gravity="top|center_horizontal"
-            android:background="@drawable/gamepad_button_yellow"
-            android:text="Y"
-            android:textColor="#000000"
-            android:textSize="18sp"
-            android:textStyle="bold" />
 
         <!-- A - Alt -->
         <androidx.appcompat.widget.AppCompatButton
@@ -287,6 +278,19 @@
             android:textStyle="bold" />
 
         <!-- X - Sol -->
+
+        <!-- B - Sağ -->
+        <androidx.appcompat.widget.AppCompatButton
+            android:id="@+id/btnB"
+            android:layout_width="50dp"
+            android:layout_height="50dp"
+            android:layout_gravity="center_vertical|end"
+            android:background="@drawable/gamepad_button_red"
+            android:text="B"
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
         <androidx.appcompat.widget.AppCompatButton
             android:id="@+id/btnX"
             android:layout_width="50dp"
@@ -298,15 +302,14 @@
             android:textSize="18sp"
             android:textStyle="bold" />
 
-        <!-- B - Sağ -->
         <androidx.appcompat.widget.AppCompatButton
-            android:id="@+id/btnB"
+            android:id="@+id/btnY"
             android:layout_width="50dp"
             android:layout_height="50dp"
-            android:layout_gravity="center_vertical|end"
-            android:background="@drawable/gamepad_button_red"
-            android:text="B"
-            android:textColor="#FFFFFF"
+            android:layout_gravity="top|center_horizontal"
+            android:background="@drawable/gamepad_button_yellow"
+            android:text="Y"
+            android:textColor="#000000"
             android:textSize="18sp"
             android:textStyle="bold" />
     </FrameLayout>

@@ -55,10 +55,14 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG = "MainActivity"
+
+        private const val MOUSE_THROTTLE_MS = 7L  // ~144 FPS
     }
 
     // --- Değişkenler ---
-    private val prefs by lazy { getSharedPreferences("settings", MODE_PRIVATE) }
+    private val prefs by lazy {
+        applicationContext.getSharedPreferences("settings", MODE_PRIVATE)
+    }
     private val PREFS_LAYOUTS = "gamepad_layouts"
     private val KEY_LAYOUTS = "layouts_json"
 
@@ -103,6 +107,7 @@ class MainActivity : AppCompatActivity() {
     private var centerOnTouchEnabled = true
     private var globalHaptic = true
     private var gyroEnabled = false
+    private var isServiceBound = false
 
     // Layout Verileri
     private var layoutsMap: MutableMap<String, LayoutSpec> = mutableMapOf()
@@ -113,6 +118,12 @@ class MainActivity : AppCompatActivity() {
     private var udpService: UdpService? = null
     private val uiHandler = Handler(Looper.getMainLooper())
     private var statusTimer: Timer? = null
+
+    private var lastMouseSendTime = 0L
+
+
+
+
 
     // ═══════════════════════════════════════════════════════════════
     // SERVICE CONNECTION
@@ -190,9 +201,18 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        try { unregisterReceiver(statusReceiver) } catch (_: Exception) {}
-        try { unbindService(serviceConnection) } catch (_: Exception) {}
+        if (isServiceBound) {
+            unbindService(serviceConnection)  // ✅ serviceConnection kullan
+            isServiceBound = false
+        }
+        try {
+            unregisterReceiver(statusReceiver)
+        } catch (_: Exception) {
+        }
+        // Temizlik
+        specViewMap.clear()
         statusTimer?.cancel()
+        statusTimer = null
         super.onDestroy()
     }
 
@@ -226,7 +246,13 @@ class MainActivity : AppCompatActivity() {
     private fun startUdpService() {
         val intent = Intent(this, UdpService::class.java)
         startService(intent)
-        bindService(intent, serviceConnection, BIND_AUTO_CREATE)
+
+        // Service bağla
+        val bound = bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+        if (!bound) {
+            Log.e(TAG, "Service bağlanamadı!")
+            Toast.makeText(this, "Service başlatılamadı", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun startStatusTimer() {
@@ -516,22 +542,20 @@ class MainActivity : AppCompatActivity() {
                     lastTouchY = ev.y
                     touchpadActive = true
                 }
-                MotionEvent.ACTION_MOVE -> {
-                    if (touchpadActive) {
-                        val dx = (ev.x - lastTouchX).toInt()
-                        val dy = (ev.y - lastTouchY).toInt()
-                        if (abs(dx) > 1 || abs(dy) > 1) {
-                            sendMouseMove(dx, dy)
-                            lastTouchX = ev.x
-                            lastTouchY = ev.y
-                        }
-                    }
-                }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     touchpadActive = false
                 }
             }
             true
+        }
+
+        fun sendThrottledMouseMove(dx: Int, dy: Int) {
+            val now = System.currentTimeMillis()
+            if (now - lastMouseSendTime < MOUSE_THROTTLE_MS) {
+                return
+            }
+            lastMouseSendTime = now
+            udpService?.sendMouseMove(dx, dy)
         }
 
         val mouseBtns = listOf(btnMouseLeft to 0, btnMouseRight to 1, btnMouseMiddle to 2)
