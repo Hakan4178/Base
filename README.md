@@ -1,14 +1,18 @@
-Hala geliştiriliyor. Lütfen istediğiniz özellikleri belirtin. 
+Hala geliştiriliyor. Lütfen istediğiniz özellikleri belirtin. Lüften hataları belirtin.
 
 # Eklenecek özellikler:
 
--Gyro sensör desteği Yapılıyor buggy 
+-Gyro sensör desteği Yapılıyor buggy eklendi oyunlar tam desteklemiyor düzenleniyor
 
--Tam joystick desteği
+-Server side ham veri işleme ve ölçeklendirme eklendi(Bazen sapıtıyor) 
+
+-İvvmeölçer desteği için altyapı ve yumuşatma altyapısı deneniyor 
+
+-Tam joystick desteği Xbox ui için compose geçiliyor 
 
 -Ui ve tema düzeltmeleri, özgür ve kişiselleştirilebilir bir tasarım
 
--Kod daha modüler,test edilebilir ve gnu felsefesine uygun hale gelecek ( Mödüler kod fikri ertelendi)
+-Kod daha modüler,test edilebilir ve gnu felsefesine uygun hale gelecek ( Modüler kod fikri ertelendi )
 
 
 # Linux tarafı için Kurulum
