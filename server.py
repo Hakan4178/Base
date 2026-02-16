@@ -517,8 +517,7 @@ class UdpServer:
             pass
     
     def _signed(self, b):
-        """Byte'ı signed'a çevir"""
-        return struct.unpack('b', bytes([b]))[0]  # Daha hızlı yöntem
+        return b - 256 if b > 127 else b # Daha hızlı yöntem
     
     def _verify_checksum(self, data):
         if len(data) < 12:
